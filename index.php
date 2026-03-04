@@ -228,10 +228,23 @@ echo $OUTPUT->header();
     </div>
 </div>
 
-<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
-<script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap4.min.js"></script>
 <script>
-(function($) {
+require(['jquery'], function($) {
+    window.jQuery = $;
+
+    function loadScript(url, cb) {
+        var s = document.createElement('script');
+        s.src = url; s.onload = cb;
+        document.head.appendChild(s);
+    }
+
+    loadScript('https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js', function() {
+        loadScript('https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap4.min.js', function() {
+            initRT($);
+        });
+    });
+
+function initRT($) {
     var columnKeys     = <?php echo json_encode(array_keys($all_columns)); ?>;
     var defaultVisible = <?php echo json_encode(array_values($default_visible)); ?>;
     var ajaxUrl        = M.cfg.wwwroot + '/local/relatorio_treinamentos/ajax.php';
@@ -371,7 +384,8 @@ echo $OUTPUT->header();
         document.getElementById('rt-zip-filters').value  = JSON.stringify(activeFilters);
     };
 
-})(jQuery);
+} // initRT
+}); // require jquery
 </script>
 
 <?php echo $OUTPUT->footer(); ?>
