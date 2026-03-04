@@ -15,8 +15,23 @@ class atualizar_relatorio extends \core\task\scheduled_task {
 
         $dados = self::buscar_dados($DB);
 
+        // Pré-computa opções de filtro (evita ler os 236k registros na web)
+        $filter_keys = array_keys(\local_relatorio_treinamentos\helper\columns::get_filter_fields());
+        $filter_options = array_fill_keys($filter_keys, []);
+        foreach ($dados as $row) {
+            foreach ($filter_keys as $field) {
+                $v = (string)($row->$field ?? '');
+                if ($v !== '') {
+                    $filter_options[$field][$v] = $v;
+                }
+            }
+        }
+        foreach ($filter_options as &$vals) { asort($vals); }
+        unset($vals);
+
         $cache = \cache::make('local_relatorio_treinamentos', 'relatorio');
         $cache->set('dados', $dados);
+        $cache->set('filter_options', $filter_options);
         $cache->set('ultima_atualizacao', time());
 
         mtrace('Relatório de treinamentos atualizado: ' . count($dados) . ' registros.');
