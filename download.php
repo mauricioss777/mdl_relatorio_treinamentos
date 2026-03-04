@@ -32,15 +32,21 @@ $active_filters = $filters_raw ? json_decode($filters_raw, true) : [];
 if (!is_array($selected_cols)) $selected_cols = null;
 if (!is_array($active_filters)) $active_filters = [];
 
-// ── Dados do cache ────────────────────────────────────────────────────────────
-$cache = \cache::make('local_relatorio_treinamentos', 'relatorio');
-$dados = $cache->get('dados');
-if ($dados === false) {
-    $task = new \local_relatorio_treinamentos\task\atualizar_relatorio();
-    $task->execute();
+// ── Dados: cache ou consulta direta ──────────────────────────────────────────
+$usar_cache = (bool)get_config('local_relatorio_treinamentos', 'usar_cache');
+if ($usar_cache) {
+    $cache = \cache::make('local_relatorio_treinamentos', 'relatorio');
     $dados = $cache->get('dados');
+    if ($dados === false) {
+        $task = new \local_relatorio_treinamentos\task\atualizar_relatorio();
+        $task->execute();
+        $dados = $cache->get('dados');
+    }
+} else {
+    ini_set('memory_limit', '4G');
+    $dados = \local_relatorio_treinamentos\task\atualizar_relatorio::buscar_dados($DB);
 }
-$dados = (array)$dados;
+$dados = array_values((array)$dados);
 
 // ── Filtro de acesso para gestores ────────────────────────────────────────────
 if (!$is_admin && !$is_moodle_manager && $is_gestor) {
@@ -93,18 +99,20 @@ function rt_safe_filename($name) {
     return $name ?: 'grupo';
 }
 
-function rt_build_xlsx($workbook, $sheet_name, $headers, $rows, $fmt_header, $fmt_sim, $fmt_nao) {
+function rt_build_xlsx($workbook, $sheet_name, $export_cols, $rows, $fmt_header, $fmt_sim, $fmt_nao) {
     $sheet = $workbook->add_worksheet(mb_substr($sheet_name, 0, 31));
-    foreach ($headers as $col => $titulo) {
-        $sheet->write_string(0, $col, $titulo, $fmt_header);
+    $col_keys   = array_keys($export_cols);
+    $col_labels = array_values($export_cols);
+    foreach ($col_labels as $ci => $titulo) {
+        $sheet->write_string(0, $ci, (string)$titulo, $fmt_header);
     }
-    $concluido_idx = array_search('concluido', array_keys($headers));
+    $concluido_idx = array_search('concluido', $col_keys);
     foreach ($rows as $ri => $linha) {
         foreach ($linha as $ci => $valor) {
             $fmt = ($ci === $concluido_idx)
                 ? ($valor === 'Sim' ? $fmt_sim : $fmt_nao)
                 : null;
-            $sheet->write_string($ri + 1, $ci, $valor, $fmt);
+            $sheet->write_string($ri + 1, $ci, (string)$valor, $fmt);
         }
     }
 }
@@ -138,7 +146,7 @@ if ($formato === 'xlsx') {
     foreach ($dados as $row) {
         $rows[] = rt_get_row_values($row, $export_cols);
     }
-    rt_build_xlsx($workbook, 'Relatório', array_flip($cabecalho_labels), $rows, $fmt_h, $fmt_sim, $fmt_nao);
+    rt_build_xlsx($workbook, 'Relatório', $export_cols, $rows, $fmt_h, $fmt_sim, $fmt_nao);
     $workbook->close();
     exit;
 }
@@ -171,7 +179,7 @@ if ($formato === 'zip') {
         $fmt_h   = $workbook->add_format(['bold' => 1, 'bg_color' => '#343a40', 'color' => '#ffffff']);
         $fmt_sim = $workbook->add_format(['bg_color' => '#d4edda']);
         $fmt_nao = $workbook->add_format(['bg_color' => '#e2e3e5']);
-        rt_build_xlsx($workbook, mb_substr($grupo_val, 0, 31), array_flip($cabecalho_labels), $linhas, $fmt_h, $fmt_sim, $fmt_nao);
+        rt_build_xlsx($workbook, mb_substr($grupo_val, 0, 31), $export_cols, $linhas, $fmt_h, $fmt_sim, $fmt_nao);
         $workbook->close();
     }
 

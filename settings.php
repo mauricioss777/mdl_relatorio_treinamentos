@@ -19,5 +19,13 @@ if ($hassiteconfig) {
         array_map('htmlspecialchars', $all_columns)
     ));
 
+    $settings->add(new admin_setting_configcheckbox(
+        'local_relatorio_treinamentos/usar_cache',
+        'Usar cache da task agendada',
+        'Quando habilitado, os dados são lidos do cache gerado pela task de 02h. ' .
+        'Quando desabilitado, a consulta SQL é executada diretamente a cada requisição (modo de teste de performance).',
+        0
+    ));
+
     $ADMIN->add('localplugins', $settings);
 }

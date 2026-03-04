@@ -26,10 +26,27 @@ $PAGE->set_title('Relatório de Treinamentos');
 $PAGE->set_heading('Relatório de Treinamentos');
 $PAGE->set_pagelayout('admin');
 
-// ── Metadados do cache (leve — sem carregar os 236k registros) ────────────────
-$cache              = \cache::make('local_relatorio_treinamentos', 'relatorio');
-$ultima_atualizacao = $cache->get('ultima_atualizacao');
-$filter_options     = $cache->get('filter_options') ?: [];
+// ── Metadados: cache ou consulta direta ──────────────────────────────────────
+$usar_cache = (bool)get_config('local_relatorio_treinamentos', 'usar_cache');
+if ($usar_cache) {
+    $cache              = \cache::make('local_relatorio_treinamentos', 'relatorio');
+    $ultima_atualizacao = $cache->get('ultima_atualizacao');
+    $filter_options     = $cache->get('filter_options') ?: [];
+} else {
+    $ultima_atualizacao = null;
+    ini_set('memory_limit', '4G');
+    $dados_temp = \local_relatorio_treinamentos\task\atualizar_relatorio::buscar_dados($DB);
+    $filter_keys = array_keys(\local_relatorio_treinamentos\helper\columns::get_filter_fields());
+    $filter_options = array_fill_keys($filter_keys, []);
+    foreach ($dados_temp as $row) {
+        foreach ($filter_keys as $field) {
+            $v = (string)($row->$field ?? '');
+            if ($v !== '') { $filter_options[$field][$v] = $v; }
+        }
+    }
+    foreach ($filter_options as &$vals) { asort($vals); }
+    unset($vals, $dados_temp);
+}
 
 $ultima_str = $ultima_atualizacao
     ? userdate($ultima_atualizacao, get_string('strftimedatetimeshort', 'langconfig'))

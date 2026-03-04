@@ -53,17 +53,20 @@ if (!is_array($filters)) {
     $filters = [];
 }
 
-// ── Carregar dados do cache ───────────────────────────────────────────────────
-$cache = \cache::make('local_relatorio_treinamentos', 'relatorio');
-$dados = $cache->get('dados');
-
-if ($dados === false) {
-    // Cache vazio: gera na hora (só ocorre se a task nunca rodou)
-    $task = new \local_relatorio_treinamentos\task\atualizar_relatorio();
-    $task->execute();
+// ── Carregar dados: cache ou consulta direta ──────────────────────────────────
+$usar_cache = (bool)get_config('local_relatorio_treinamentos', 'usar_cache');
+if ($usar_cache) {
+    $cache = \cache::make('local_relatorio_treinamentos', 'relatorio');
     $dados = $cache->get('dados');
+    if ($dados === false) {
+        $task = new \local_relatorio_treinamentos\task\atualizar_relatorio();
+        $task->execute();
+        $dados = $cache->get('dados');
+    }
+} else {
+    ini_set('memory_limit', '4G');
+    $dados = \local_relatorio_treinamentos\task\atualizar_relatorio::buscar_dados($DB);
 }
-
 $dados = array_values((array)$dados);
 
 // ── Filtro de acesso para gestores ────────────────────────────────────────────
