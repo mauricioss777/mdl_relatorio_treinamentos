@@ -35,9 +35,16 @@ if (!$is_admin && !$is_moodle_manager && !$is_gestor) {
 $draw       = required_param('draw', PARAM_INT);
 $start      = optional_param('start', 0, PARAM_INT);
 $length     = optional_param('length', 25, PARAM_INT);
-$search_raw = optional_param_array('search', [], PARAM_RAW);
-$order_raw  = optional_param_array('order', [], PARAM_RAW);
-$search_val = trim(clean_param($search_raw['value'] ?? '', PARAM_TEXT));
+// DataTables envia arrays multidimensionais (search[value], order[0][column], etc.)
+// optional_param_array() do Moodle não suporta arrays aninhados — lemos $_POST diretamente.
+$search_val = trim(clean_param($_POST['search']['value'] ?? '', PARAM_TEXT));
+$order_raw  = [];
+if (isset($_POST['order'][0])) {
+    $order_raw = [[
+        'column' => clean_param($_POST['order'][0]['column'] ?? 0, PARAM_INT),
+        'dir'    => clean_param($_POST['order'][0]['dir']    ?? 'asc', PARAM_ALPHA),
+    ]];
+}
 
 // ── Filtros customizados ──────────────────────────────────────────────────────
 $filters_json = optional_param('filters', '{}', PARAM_RAW);

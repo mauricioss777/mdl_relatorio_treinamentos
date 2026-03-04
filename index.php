@@ -234,21 +234,34 @@ $column_keys_json    = json_encode(array_keys($all_columns));
 $default_visible_json = json_encode(array_values($default_visible));
 
 $js = <<<JSCODE
-// Registra DataTables como módulos nomeados no RequireJS para evitar
-// o erro "Mismatched anonymous define()" ao carregar UMD libs externas.
-require.config({
-    paths: {
-        'datatables-core': 'https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min',
-        'datatables-bs4':  'https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap4.min'
-    },
-    shim: {
-        'datatables-bs4': { deps: ['datatables-core'] }
-    }
-});
-
-require(['jquery', 'datatables-core', 'datatables-bs4'], function(\$) {
+// Carrega DataTables como globals (não AMD) para evitar conflito com o
+// RequireJS do Moodle, que intercepta módulos como 'datatables.net' e
+// serve arquivos errados via /lib/requirejs.php.
+require(['jquery'], function(\$) {
     window.jQuery = \$;
-    initRT(\$);
+
+    // Oculta temporariamente define/require do escopo global para forçar
+    // o DataTables a carregar no modo global em vez de AMD.
+    var _define  = window.define;
+    var _require = window.require;
+    window.define  = undefined;
+    window.require = undefined;
+
+    function loadScript(url, cb) {
+        var s = document.createElement('script');
+        s.src = url;
+        s.onload = cb;
+        document.head.appendChild(s);
+    }
+
+    loadScript('https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js', function() {
+        loadScript('https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap4.min.js', function() {
+            // Restaura AMD após DataTables já registrado como global ($().DataTable)
+            window.define  = _define;
+            window.require = _require;
+            initRT(\$);
+        });
+    });
 
 function initRT(\$) {
     var columnKeys     = {$column_keys_json};
@@ -366,7 +379,7 @@ function initRT(\$) {
     };
 
 } // initRT
-}); // require jquery/datatables
+}); // require jquery
 JSCODE;
 
 $PAGE->requires->js_amd_inline($js);
