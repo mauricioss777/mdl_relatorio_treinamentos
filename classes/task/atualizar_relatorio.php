@@ -10,6 +10,7 @@ class atualizar_relatorio extends \core\task\scheduled_task {
     }
 
     public function execute() {
+        ini_set('memory_limit', '4G');
         global $DB;
 
         $dados = self::buscar_dados($DB);
