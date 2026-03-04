@@ -3,6 +3,8 @@ namespace local_relatorio_treinamentos\task;
 
 defined('MOODLE_INTERNAL') || die();
 
+require_once($CFG->dirroot . '/local/relatorio_treinamentos/locallib.php');
+
 class atualizar_relatorio extends \core\task\scheduled_task {
 
     public function get_name() {
@@ -29,12 +31,40 @@ class atualizar_relatorio extends \core\task\scheduled_task {
         foreach ($filter_options as &$vals) { asort($vals); }
         unset($vals);
 
+        // Cursos com campo personalizado rt_incluir_filtro = 1 definem as opções do filtro nome_curso
+        $cursos_filtro = self::get_cursos_no_filtro($DB);
+        if (!empty($cursos_filtro)) {
+            $filter_options['nome_curso'] = $cursos_filtro;
+        }
+
         $cache = \cache::make('local_relatorio_treinamentos', 'relatorio');
         $cache->set('dados', $dados);
         $cache->set('filter_options', $filter_options);
         $cache->set('ultima_atualizacao', time());
 
         mtrace('Relatório de treinamentos atualizado: ' . count($dados) . ' registros.');
+    }
+
+    /**
+     * Retorna array [fullname => fullname] dos cursos com rt_incluir_filtro=1,
+     * usados como opções do filtro de curso no relatório.
+     */
+    public static function get_cursos_no_filtro($DB) {
+        $sql = "SELECT DISTINCT c.fullname AS nome_curso
+                FROM {course} c
+                JOIN {customfield_data} d  ON d.instanceid = c.id
+                JOIN {customfield_field} f ON f.id = d.fieldid
+                WHERE f.shortname = 'rt_incluir_filtro'
+                  AND d.value = '1'
+                  AND c.visible = 1
+                ORDER BY c.fullname";
+        $rows = $DB->get_records_sql($sql);
+        $result = [];
+        foreach ($rows as $row) {
+            $v = trim($row->nome_curso);
+            if ($v !== '') { $result[$v] = $v; }
+        }
+        return $result;
     }
 
     public static function buscar_dados($DB) {

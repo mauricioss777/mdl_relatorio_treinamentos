@@ -46,6 +46,12 @@ if ($usar_cache) {
     }
     foreach ($filter_options as &$vals) { asort($vals); }
     unset($vals, $dados_temp);
+
+    // Sobrescreve filtro de curso com campo personalizado
+    $cursos_filtro = \local_relatorio_treinamentos\task\atualizar_relatorio::get_cursos_no_filtro($DB);
+    if (!empty($cursos_filtro)) {
+        $filter_options['nome_curso'] = $cursos_filtro;
+    }
 }
 
 $ultima_str = $ultima_atualizacao
