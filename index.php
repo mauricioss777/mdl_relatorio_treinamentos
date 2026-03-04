@@ -66,7 +66,7 @@ echo $OUTPUT->header();
 }
 #rt-col-toggle:hover { background: #495057; }
 #rt-col-panel {
-    display: none; position: fixed; left: 26px; top: 0; bottom: 0;
+    display: none; position: fixed; left: 0; top: 0; bottom: 0;
     width: 280px; z-index: 9999; background: #fff;
     box-shadow: 3px 0 10px rgba(0,0,0,.25); overflow-y: auto;
 }
@@ -90,12 +90,20 @@ echo $OUTPUT->header();
 #rt-filter-panel .card-body { background: #f8f9fa; }
 /* ── DataTables processing overlay ── */
 #rt-table_processing {
-    background: rgba(255,255,255,.9);
+    background: rgba(255,255,255,.95);
     border: 1px solid #dee2e6;
     border-radius: 4px;
-    padding: 12px 20px;
+    padding: 12px 24px;
     font-weight: bold;
     color: #343a40;
+    text-align: center;
+}
+/* oculta os dots animados — só mostra o texto "Carregando..." */
+#rt-table_processing > div { display: none; }
+/* ── DataTables: remove ícones de ordenação duplicados nas colunas não ordenadas ── */
+#rt-table thead tr th.sorting::before,
+#rt-table thead tr th.sorting::after {
+    content: '' !important;
 }
 </style>
 
@@ -112,11 +120,11 @@ echo $OUTPUT->header();
         </small>
         <div>
             <button class="btn btn-sm btn-outline-secondary" type="button"
-                    data-toggle="collapse" data-target="#rt-download-panel">
+                    data-bs-toggle="collapse" data-bs-target="#rt-download-panel">
                 <i class="fa fa-download"></i> Downloads
             </button>
             <button class="btn btn-sm btn-outline-secondary ml-1" type="button"
-                    data-toggle="collapse" data-target="#rt-filter-panel">
+                    data-bs-toggle="collapse" data-bs-target="#rt-filter-panel">
                 <i class="fa fa-filter"></i> Filtros
             </button>
         </div>
@@ -177,9 +185,14 @@ echo $OUTPUT->header();
                     </div>
                     <?php endforeach; ?>
                 </div>
-                <button class="btn btn-outline-secondary btn-sm mt-1" onclick="rtClearFilters()">
-                    <i class="fa fa-times"></i> Limpar filtros
-                </button>
+                <div class="d-flex gap-2 mt-1" style="gap:8px">
+                    <button class="btn btn-primary btn-sm" id="rt-apply-filters">
+                        <i class="fa fa-check"></i> Aplicar filtros
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="rtClearFilters()">
+                        <i class="fa fa-times"></i> Limpar filtros
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -344,21 +357,25 @@ function initRT(\$) {
     document.getElementById('rt-col-select-all').addEventListener('click', function() { saveAndApply(columnKeys.slice()); });
     document.getElementById('rt-col-select-default').addEventListener('click', function() { saveAndApply(defaultVisible.slice()); });
     document.getElementById('rt-col-unselect-all').addEventListener('click', function() { saveAndApply([]); });
-    document.getElementById('rt-col-toggle').addEventListener('click', function() {
-        document.getElementById('rt-col-panel').classList.toggle('open');
+
+    var colToggleBtn = document.getElementById('rt-col-toggle');
+    var colPanel     = document.getElementById('rt-col-panel');
+    colToggleBtn.addEventListener('click', function() {
+        colPanel.classList.add('open');
+        colToggleBtn.style.display = 'none';
     });
     document.getElementById('rt-col-close').addEventListener('click', function() {
-        document.getElementById('rt-col-panel').classList.remove('open');
+        colPanel.classList.remove('open');
+        colToggleBtn.style.display = '';
     });
 
     // ── Filtros customizados ──────────────────────────────────────────────────
-    document.querySelectorAll('.rt-filter-select').forEach(function(sel) {
-        sel.addEventListener('change', function() {
-            var f = this.dataset.filterField;
-            if (this.value) { activeFilters[f] = this.value; }
-            else { delete activeFilters[f]; }
-            table.ajax.reload();
+    document.getElementById('rt-apply-filters').addEventListener('click', function() {
+        activeFilters = {};
+        document.querySelectorAll('.rt-filter-select').forEach(function(sel) {
+            if (sel.value) { activeFilters[sel.dataset.filterField] = sel.value; }
         });
+        table.ajax.reload();
     });
     window.rtClearFilters = function() {
         activeFilters = {};
