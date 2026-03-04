@@ -228,9 +228,14 @@ echo $OUTPUT->header();
     </div>
 </div>
 
-<script>
-require(['jquery'], function($) {
-    window.jQuery = $;
+<?php
+// ── JavaScript: injetado via AMD para garantir que require() esteja disponível ──
+$column_keys_json    = json_encode(array_keys($all_columns));
+$default_visible_json = json_encode(array_values($default_visible));
+
+$js = <<<JSCODE
+require(['jquery'], function(\$) {
+    window.jQuery = \$;
 
     function loadScript(url, cb) {
         var s = document.createElement('script');
@@ -240,25 +245,22 @@ require(['jquery'], function($) {
 
     loadScript('https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js', function() {
         loadScript('https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap4.min.js', function() {
-            initRT($);
+            initRT(\$);
         });
     });
 
-function initRT($) {
-    var columnKeys     = <?php echo json_encode(array_keys($all_columns)); ?>;
-    var defaultVisible = <?php echo json_encode(array_values($default_visible)); ?>;
+function initRT(\$) {
+    var columnKeys     = {$column_keys_json};
+    var defaultVisible = {$default_visible_json};
     var ajaxUrl        = M.cfg.wwwroot + '/local/relatorio_treinamentos/ajax.php';
     var LS_KEY         = 'rt_visible_cols_v1';
+    var activeFilters  = {};
 
-    var activeFilters = {};
-
-    // ── Coluna config (uma entrada por coluna, sem data binding — array posicional) ──
     var columnsDef = columnKeys.map(function() {
         return { orderable: true, searchable: false, defaultContent: '' };
     });
 
-    // ── DataTables Server-Side ─────────────────────────────────────────────────
-    var table = $('#rt-table').DataTable({
+    var table = \$('#rt-table').DataTable({
         processing:  true,
         serverSide:  true,
         scrollX:     true,
@@ -288,21 +290,15 @@ function initRT($) {
                 alert('Erro ao carregar dados: ' + err);
             }
         },
-        drawCallback: function(settings) {
-            var api = this.api();
-            var total = api.page.info().recordsTotal;
-            $('#rt-total-badge').html(
+        drawCallback: function() {
+            var total = this.api().page.info().recordsTotal;
+            \$('#rt-total-badge').html(
                 '&nbsp;|&nbsp; <strong>' + total.toLocaleString('pt-BR') + '</strong> registros'
             );
         }
     });
 
-    // ── Renderização especial (HTML já vem do servidor) ────────────────────────
-    // O servidor envia HTML nas células de progresso/concluído — DataTables
-    // usa columnDefs para habilitar HTML nelas:
-    table.settings()[0].aoColumns.forEach(function(col) { col.bEscapeRegex = false; });
-
-    // ── Visibilidade de colunas ────────────────────────────────────────────────
+    // ── Visibilidade de colunas ───────────────────────────────────────────────
     var savedCols = null;
     try { savedCols = JSON.parse(localStorage.getItem(LS_KEY)); } catch(e) {}
     var visibleCols = savedCols || defaultVisible.slice();
@@ -315,36 +311,25 @@ function initRT($) {
             cb.checked = keys.indexOf(cb.dataset.colKey) !== -1;
         });
     }
-
     function saveAndApply(keys) {
         visibleCols = keys;
         try { localStorage.setItem(LS_KEY, JSON.stringify(keys)); } catch(e) {}
         applyColVisibility(keys);
     }
-
     applyColVisibility(visibleCols);
 
     document.querySelectorAll('.rt-col-toggle-cb').forEach(function(cb) {
         cb.addEventListener('change', function() {
             var key = this.dataset.colKey;
-            if (this.checked) {
-                if (visibleCols.indexOf(key) === -1) visibleCols.push(key);
-            } else {
-                visibleCols = visibleCols.filter(function(k) { return k !== key; });
-            }
+            if (this.checked) { if (visibleCols.indexOf(key) === -1) visibleCols.push(key); }
+            else { visibleCols = visibleCols.filter(function(k) { return k !== key; }); }
             saveAndApply(visibleCols);
         });
     });
 
-    document.getElementById('rt-col-select-all').addEventListener('click', function() {
-        saveAndApply(columnKeys.slice());
-    });
-    document.getElementById('rt-col-select-default').addEventListener('click', function() {
-        saveAndApply(defaultVisible.slice());
-    });
-    document.getElementById('rt-col-unselect-all').addEventListener('click', function() {
-        saveAndApply([]);
-    });
+    document.getElementById('rt-col-select-all').addEventListener('click', function() { saveAndApply(columnKeys.slice()); });
+    document.getElementById('rt-col-select-default').addEventListener('click', function() { saveAndApply(defaultVisible.slice()); });
+    document.getElementById('rt-col-unselect-all').addEventListener('click', function() { saveAndApply([]); });
     document.getElementById('rt-col-toggle').addEventListener('click', function() {
         document.getElementById('rt-col-panel').classList.toggle('open');
     });
@@ -356,29 +341,24 @@ function initRT($) {
     document.querySelectorAll('.rt-filter-select').forEach(function(sel) {
         sel.addEventListener('change', function() {
             var f = this.dataset.filterField;
-            if (this.value) {
-                activeFilters[f] = this.value;
-            } else {
-                delete activeFilters[f];
-            }
+            if (this.value) { activeFilters[f] = this.value; }
+            else { delete activeFilters[f]; }
             table.ajax.reload();
         });
     });
-
     window.rtClearFilters = function() {
         activeFilters = {};
         document.querySelectorAll('.rt-filter-select').forEach(function(s) { s.value = ''; });
         table.ajax.reload();
     };
 
-    // ── Downloads (passam filtros atuais ao download.php) ─────────────────────
+    // ── Downloads ─────────────────────────────────────────────────────────────
     window.rtSubmitDownload = function(formato) {
         document.getElementById('rt-input-col-keys').value = JSON.stringify(visibleCols);
         document.getElementById('rt-input-filters').value  = JSON.stringify(activeFilters);
         document.getElementById('rt-input-formato').value  = formato;
         document.getElementById('rt-download-form').submit();
     };
-
     window.rtFillZipForm = function() {
         document.getElementById('rt-zip-col-keys').value = JSON.stringify(visibleCols);
         document.getElementById('rt-zip-filters').value  = JSON.stringify(activeFilters);
@@ -386,6 +366,8 @@ function initRT($) {
 
 } // initRT
 }); // require jquery
-</script>
+JSCODE;
 
-<?php echo $OUTPUT->footer(); ?>
+$PAGE->requires->js_amd_inline($js);
+
+echo $OUTPUT->footer();
