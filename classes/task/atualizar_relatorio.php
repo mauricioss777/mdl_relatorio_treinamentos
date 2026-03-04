@@ -131,9 +131,17 @@ class atualizar_relatorio extends \core\task\scheduled_task {
                  WHERE gm2.userid = u.id)                           AS nome_grupo
 
             FROM {user} u
-            JOIN {user_enrolments} ue        ON ue.userid = u.id
-            JOIN {enrol} e                   ON e.id = ue.enrolid
-            JOIN {course} c                  ON c.id = e.courseid
+            JOIN (
+                SELECT DISTINCT ON (ue2.userid, e2.courseid)
+                    ue2.userid, e2.courseid
+                FROM {user_enrolments} ue2
+                JOIN {enrol} e2 ON e2.id = ue2.enrolid
+                WHERE ue2.status = 0
+                  AND ue2.timestart <= EXTRACT(EPOCH FROM NOW())::INTEGER
+                  AND (ue2.timeend = 0 OR ue2.timeend >= EXTRACT(EPOCH FROM NOW())::INTEGER)
+                ORDER BY ue2.userid, e2.courseid, ue2.id
+            ) enrol_dedup ON enrol_dedup.userid = u.id
+            JOIN {course} c                  ON c.id = enrol_dedup.courseid
             LEFT JOIN {course_completions} cc
                 ON cc.userid = u.id AND cc.course = c.id
             LEFT JOIN {grade_items} gi
@@ -204,9 +212,6 @@ class atualizar_relatorio extends \core\task\scheduled_task {
             WHERE u.deleted   = 0
               AND u.suspended = 0
               AND c.visible   = 1
-              AND ue.status   = 0
-              AND ue.timestart <= EXTRACT(EPOCH FROM NOW())::INTEGER
-              AND (ue.timeend = 0 OR ue.timeend >= EXTRACT(EPOCH FROM NOW())::INTEGER)
 
             ORDER BY prof_nome_filial, bas_nome_funcionario, nome_curso
         ";
