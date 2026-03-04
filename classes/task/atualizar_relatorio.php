@@ -41,7 +41,7 @@ class atualizar_relatorio extends \core\task\scheduled_task {
                 info_cpf.data                                   AS dp_cpf,
                 info_cidade.data                                AS dp_cidade_colaborador,
                 info_uf.data                                    AS dp_uf,
-                to_timestamp(NULLIF(info_nascimento.data, '')::bigint) AS dp_data_nascimento,
+                to_timestamp(NULLIF(NULLIF(info_nascimento.data, ''), '0')::bigint) AS dp_data_nascimento,
                 info_sexo.data                                  AS dp_sexo,
                 info_sid.data                                   AS dp_sid,
 
@@ -63,8 +63,8 @@ class atualizar_relatorio extends \core\task\scheduled_task {
                 info_local_nome.data                            AS prof_nome_local,
 
                 -- RH
-                to_timestamp(NULLIF(info_admissao.data, '')::bigint) AS prof_data_admissao,
-                to_timestamp(NULLIF(info_demissao.data, '')::bigint) AS prof_data_demissao,
+                to_timestamp(NULLIF(NULLIF(info_admissao.data, ''), '0')::bigint) AS prof_data_admissao,
+                to_timestamp(NULLIF(NULLIF(info_demissao.data, ''), '0')::bigint) AS prof_data_demissao,
                 info_cargo.data                                 AS prof_codigo_cargo,
                 info_cargo_nome.data                            AS prof_cargo,
                 info_grau.data                                  AS prof_codigo_grau_instrucao,
@@ -101,12 +101,12 @@ class atualizar_relatorio extends \core\task\scheduled_task {
                 -- Situação RH
                 info_situacao.data                              AS prof_codigo_situacao,
                 info_situacao_desc.data                         AS prof_descricao_situacao,
-                to_timestamp(NULLIF(info_situacao_inicio.data, '')::bigint) AS prof_data_inicio_situacao,
-                to_timestamp(NULLIF(info_situacao_fim.data, '')::bigint)    AS prof_data_fim_situacao,
+                to_timestamp(NULLIF(NULLIF(info_situacao_inicio.data, ''), '0')::bigint) AS prof_data_inicio_situacao,
+                to_timestamp(NULLIF(NULLIF(info_situacao_fim.data, ''), '0')::bigint)    AS prof_data_fim_situacao,
 
                 -- Inscrição
-                to_timestamp(NULLIF(info_insc_admissao.data, '')::bigint)   AS insc_data_admissao_inscricao,
-                to_timestamp(NULLIF(info_insc_demissao.data, '')::bigint)   AS insc_data_demissao_inscricao,
+                info_insc_admissao.data                                     AS insc_data_admissao_inscricao,
+                info_insc_demissao.data                                     AS insc_data_demissao_inscricao,
 
                 -- Dados do curso
                 c.fullname                                      AS nome_curso,
