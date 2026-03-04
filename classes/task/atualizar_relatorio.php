@@ -23,7 +23,7 @@ class atualizar_relatorio extends \core\task\scheduled_task {
 
     public static function buscar_dados($DB) {
         $sql = "
-            SELECT DISTINCT
+            SELECT
                 -- Chave única por combinação usuário+curso
                 CONCAT(u.id::text, '_', c.id::text)            AS row_key,
 
@@ -125,7 +125,10 @@ class atualizar_relatorio extends \core\task\scheduled_task {
                 , 2)                                            AS progresso_percentual,
                 CASE WHEN cc.timecompleted IS NOT NULL THEN 'Sim' ELSE 'Não' END AS concluido,
                 ROUND(gg.finalgrade::numeric, 2)                AS nota,
-                g.name                                          AS nome_grupo
+                (SELECT STRING_AGG(g2.name, ', ' ORDER BY g2.name)
+                 FROM {groups_members} gm2
+                 JOIN {groups} g2 ON g2.id = gm2.groupid AND g2.courseid = c.id
+                 WHERE gm2.userid = u.id)                           AS nome_grupo
 
             FROM {user} u
             JOIN {user_enrolments} ue        ON ue.userid = u.id
@@ -137,8 +140,6 @@ class atualizar_relatorio extends \core\task\scheduled_task {
                 ON gi.courseid = c.id AND gi.itemtype = 'course'
             LEFT JOIN {grade_grades} gg
                 ON gg.itemid = gi.id AND gg.userid = u.id
-            LEFT JOIN {groups_members} gm    ON gm.userid = u.id
-            LEFT JOIN {groups} g             ON g.id = gm.groupid AND g.courseid = c.id
 
             -- Dados pessoais
             LEFT JOIN {user_info_data} info_cpf             ON info_cpf.userid = u.id             AND info_cpf.fieldid = 31
