@@ -234,20 +234,21 @@ $column_keys_json    = json_encode(array_keys($all_columns));
 $default_visible_json = json_encode(array_values($default_visible));
 
 $js = <<<JSCODE
-require(['jquery'], function(\$) {
-    window.jQuery = \$;
-
-    function loadScript(url, cb) {
-        var s = document.createElement('script');
-        s.src = url; s.onload = cb;
-        document.head.appendChild(s);
+// Registra DataTables como módulos nomeados no RequireJS para evitar
+// o erro "Mismatched anonymous define()" ao carregar UMD libs externas.
+require.config({
+    paths: {
+        'datatables-core': 'https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min',
+        'datatables-bs4':  'https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap4.min'
+    },
+    shim: {
+        'datatables-bs4': { deps: ['datatables-core'] }
     }
+});
 
-    loadScript('https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js', function() {
-        loadScript('https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap4.min.js', function() {
-            initRT(\$);
-        });
-    });
+require(['jquery', 'datatables-core', 'datatables-bs4'], function(\$) {
+    window.jQuery = \$;
+    initRT(\$);
 
 function initRT(\$) {
     var columnKeys     = {$column_keys_json};
@@ -365,7 +366,7 @@ function initRT(\$) {
     };
 
 } // initRT
-}); // require jquery
+}); // require jquery/datatables
 JSCODE;
 
 $PAGE->requires->js_amd_inline($js);
