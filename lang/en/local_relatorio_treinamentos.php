@@ -5,3 +5,7 @@ $string['relatorio_treinamentos:view']     = 'Ver Relatório de Treinamentos';
 $string['noaccess']                        = 'Você não tem permissão para acessar o Relatório de Treinamentos.';
 $string['setting_colunas_visiveis']        = 'Colunas visíveis por padrão';
 $string['setting_colunas_visiveis_desc']   = 'Selecione quais colunas aparecem visíveis quando o usuário abre o relatório pela primeira vez (sem preferência salva no navegador).';
+$string['setting_filtros_visiveis']        = 'Filtros disponíveis no relatório';
+$string['setting_filtros_visiveis_desc']   = 'Selecione quais campos de filtro serão exibidos no painel de filtros do relatório. Apenas os campos selecionados aparecerão para o usuário.';
+$string['setting_agrupamentos_zip']        = 'Agrupamentos disponíveis no download ZIP';
+$string['setting_agrupamentos_zip_desc']   = 'Selecione quais campos estarão disponíveis como opções de agrupamento no download ZIP do relatório.';

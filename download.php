@@ -338,7 +338,12 @@ if ($formato === 'xlsx') {
 
 // ── ZIP (arquivos CSV internos) ───────────────────────────────────────────────
 if ($formato === 'zip') {
-    if (!in_array($zip_group_field, array_keys(\local_relatorio_treinamentos\helper\columns::get_zip_group_fields()))) {
+    $all_zip_fields   = \local_relatorio_treinamentos\helper\columns::get_zip_group_fields();
+    $zip_saved        = get_config('local_relatorio_treinamentos', 'agrupamentos_zip');
+    $valid_zip_fields = ($zip_saved !== false && $zip_saved !== '')
+        ? array_intersect_key($all_zip_fields, array_flip(explode(',', $zip_saved)))
+        : $all_zip_fields;
+    if (!array_key_exists($zip_group_field, $valid_zip_fields)) {
         die('Campo de agrupamento inválido.');
     }
     if (!class_exists('ZipArchive')) {

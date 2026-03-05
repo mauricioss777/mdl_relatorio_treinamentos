@@ -80,8 +80,19 @@ $ultima_str = $ultima_atualizacao
 // ── Definições de colunas ─────────────────────────────────────────────────────
 $all_columns      = \local_relatorio_treinamentos\helper\columns::get_all();
 $column_groups    = \local_relatorio_treinamentos\helper\columns::get_groups();
-$filter_fields    = \local_relatorio_treinamentos\helper\columns::get_filter_fields();
-$zip_group_fields = \local_relatorio_treinamentos\helper\columns::get_zip_group_fields();
+// Filtros: usa setting do admin; se não configurado, usa todos disponíveis
+$all_filter_fields = \local_relatorio_treinamentos\helper\columns::get_filter_fields();
+$filtros_saved     = get_config('local_relatorio_treinamentos', 'filtros_visiveis');
+$filter_fields     = ($filtros_saved !== false && $filtros_saved !== '')
+    ? array_intersect_key($all_filter_fields, array_flip(explode(',', $filtros_saved)))
+    : $all_filter_fields;
+
+// Agrupamentos ZIP: usa setting do admin; se não configurado, usa todos disponíveis
+$all_zip_fields   = \local_relatorio_treinamentos\helper\columns::get_zip_group_fields();
+$zip_saved        = get_config('local_relatorio_treinamentos', 'agrupamentos_zip');
+$zip_group_fields = ($zip_saved !== false && $zip_saved !== '')
+    ? array_intersect_key($all_zip_fields, array_flip(explode(',', $zip_saved)))
+    : $all_zip_fields;
 
 // ── Colunas padrão ────────────────────────────────────────────────────────────
 $settings_val = get_config('local_relatorio_treinamentos', 'colunas_visiveis');
