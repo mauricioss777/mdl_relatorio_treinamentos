@@ -259,7 +259,7 @@ table.dataTable thead > tr > th.sorting_desc::after {
                             <option value="<?php echo s($zkey); ?>"><?php echo s($zlabel); ?></option>
                         <?php endforeach; ?>
                     </select>
-                    <button type="button" class="btn btn-primary btn-sm" onclick="rtStartSSEDownload('zip', {zip_group_field: document.querySelector('#rt-zip-form [name=zip_group_field]').value})">
+                    <button type="button" class="btn btn-primary btn-sm" onclick="var s=document.querySelector('#rt-zip-form [name=zip_group_field]');rtStartSSEDownload('zip',{zip_group_field:s.value,zip_group_label:s.options[s.selectedIndex].text})">
                         <i class="fa fa-file-archive-o"></i> Download ZIP
                     </button>
                 </div>
@@ -513,8 +513,12 @@ function initRT(\$) {
             col_keys: JSON.stringify(visibleCols),
             filters:  JSON.stringify(activeFilters),
         });
+        var groupLabel = '';
         if (extraParams) {
-            Object.keys(extraParams).forEach(function(k) { params.set(k, extraParams[k]); });
+            Object.keys(extraParams).forEach(function(k) {
+                if (k === 'zip_group_label') { groupLabel = extraParams[k]; }
+                else { params.set(k, extraParams[k]); }
+            });
         }
         var isZip = (formato === 'zip');
         rtShowOverlay(isZip ? 'Gerando ZIP...' : 'Gerando XLSX...', isZip);
@@ -544,7 +548,8 @@ function initRT(\$) {
                 return;
             }
             if (data.total) {
-                rtShowProgress(data.step, data.total, data.label || '', data.phase || '');
+                var itemLabel = groupLabel ? groupLabel + ': ' + (data.label || '') : (data.label || '');
+                rtShowProgress(data.step, data.total, itemLabel, data.phase || '');
             }
         };
         es.onerror = function() {
