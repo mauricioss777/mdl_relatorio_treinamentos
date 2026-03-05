@@ -6,6 +6,7 @@ Modos:
   Arquivo único:  python3 csv_to_xlsx.py <input.csv> <output.xlsx>
   Diretório:      python3 csv_to_xlsx.py --dir <diretório>
                   Converte todos os *.csv do diretório para *.xlsx (remove os CSVs).
+                  Imprime o nome de cada arquivo XLSX convertido no stdout (um por linha).
 """
 import sys
 import os
@@ -36,6 +37,7 @@ if sys.argv[1] == '--dir':
         xlsx_path = os.path.splitext(csv_path)[0] + '.xlsx'
         convert(csv_path, xlsx_path)
         os.remove(csv_path)
+        print(os.path.basename(xlsx_path), flush=True)
 else:
     if len(sys.argv) < 3:
         print("Uso: csv_to_xlsx.py <input.csv> <output.xlsx>", file=sys.stderr)

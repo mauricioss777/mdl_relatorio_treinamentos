@@ -265,7 +265,7 @@ if ($formato === 'zip') {
             $rs->close();
 
             $step++;
-            $sse_flush(['step' => $step, 'total' => $total + 2, 'label' => $gval]);
+            $sse_flush(['step' => $step, 'total' => $total * 2, 'label' => $gval]);
         }
     } else {
         $grupos = [];
@@ -285,13 +285,35 @@ if ($formato === 'zip') {
             $write_group_csv($csv_path, $linhas);
 
             $step++;
-            $sse_flush(['step' => $step, 'total' => $total + 2, 'label' => $grupo_val]);
+            $sse_flush(['step' => $step, 'total' => $total * 2, 'label' => $grupo_val]);
         }
     }
 
-    // Converte todos os CSVs para XLSX em uma única chamada Python
-    $sse_flush(['step' => $total + 1, 'total' => $total + 2, 'label' => 'Convertendo para XLSX...']);
-    if (!local_relatorio_treinamentos_csv_dir_to_xlsx($tempdir)) {
+    // Converte CSVs para XLSX via Python com progresso por arquivo
+    $py_script = $CFG->dirroot . '/local/relatorio_treinamentos/cli/csv_to_xlsx.py';
+    $py_cmd    = escapeshellarg(local_relatorio_treinamentos_get_python_path())
+               . ' ' . escapeshellarg($py_script)
+               . ' --dir ' . escapeshellarg($tempdir);
+    $proc = proc_open($py_cmd, [0 => ['pipe', 'r'], 1 => ['pipe', 'r'], 2 => ['file', '/dev/null', 'w']], $pipes);
+    if (!is_resource($proc)) {
+        $sse_flush(['error' => 'Falha ao iniciar Python.']);
+        array_map('unlink', glob($tempdir . '/*'));
+        rmdir($tempdir);
+        exit;
+    }
+    fclose($pipes[0]);
+    $conv_step = 0;
+    while (!feof($pipes[1])) {
+        $line = trim(fgets($pipes[1]));
+        if ($line !== '') {
+            $conv_step++;
+            $label = pathinfo($line, PATHINFO_FILENAME);
+            $sse_flush(['step' => $total + $conv_step, 'total' => $total * 2, 'label' => $label]);
+        }
+    }
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    if (proc_close($proc) !== 0) {
         $sse_flush(['error' => 'Falha ao converter CSVs para XLSX. Verifique o Python e as dependências.']);
         array_map('unlink', glob($tempdir . '/*'));
         rmdir($tempdir);
@@ -299,7 +321,6 @@ if ($formato === 'zip') {
     }
 
     // Empacota em ZIP
-    $sse_flush(['step' => $total + 2, 'total' => $total + 2, 'label' => 'Empacotando ZIP...']);
     $zip_name = 'relatorio_treinamentos_' . $zip_group_field . '_' . date('Ymd') . '.zip';
     $out_file = sys_get_temp_dir() . '/rt_gen_' . $token . '.zip';
     $zip = new ZipArchive();
