@@ -265,7 +265,7 @@ if ($formato === 'zip') {
             $rs->close();
 
             $step++;
-            $sse_flush(['step' => $step, 'total' => $total + 1, 'label' => $gval]);
+            $sse_flush(['step' => $step, 'total' => $total + 2, 'label' => $gval]);
         }
     } else {
         $grupos = [];
@@ -285,12 +285,12 @@ if ($formato === 'zip') {
             $write_group_csv($csv_path, $linhas);
 
             $step++;
-            $sse_flush(['step' => $step, 'total' => $total + 1, 'label' => $grupo_val]);
+            $sse_flush(['step' => $step, 'total' => $total + 2, 'label' => $grupo_val]);
         }
     }
 
     // Converte todos os CSVs para XLSX em uma única chamada Python
-    $sse_flush(['step' => $total + 1, 'total' => $total + 1, 'label' => 'Convertendo para XLSX...']);
+    $sse_flush(['step' => $total + 1, 'total' => $total + 2, 'label' => 'Convertendo para XLSX...']);
     if (!local_relatorio_treinamentos_csv_dir_to_xlsx($tempdir)) {
         $sse_flush(['error' => 'Falha ao converter CSVs para XLSX. Verifique o Python e as dependências.']);
         array_map('unlink', glob($tempdir . '/*'));
@@ -299,6 +299,7 @@ if ($formato === 'zip') {
     }
 
     // Empacota em ZIP
+    $sse_flush(['step' => $total + 2, 'total' => $total + 2, 'label' => 'Empacotando ZIP...']);
     $zip_name = 'relatorio_treinamentos_' . $zip_group_field . '_' . date('Ymd') . '.zip';
     $out_file = sys_get_temp_dir() . '/rt_gen_' . $token . '.zip';
     $zip = new ZipArchive();
