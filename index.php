@@ -207,6 +207,7 @@ table.dataTable thead > tr > th.sorting_desc::after {
             </div>
             <small id="rt-progress-counter"></small>
             <small id="rt-progress-label"></small>
+            <small id="rt-progress-elapsed"></small>
         </div>
     </div>
 </div>
@@ -514,6 +515,7 @@ function initRT(\$) {
             filters:  JSON.stringify(activeFilters),
         });
         var groupLabel = '';
+        var startTime = Date.now();
         if (extraParams) {
             Object.keys(extraParams).forEach(function(k) {
                 if (k === 'zip_group_label') { groupLabel = extraParams[k]; }
@@ -549,7 +551,9 @@ function initRT(\$) {
             }
             if (data.total) {
                 var itemLabel = groupLabel ? groupLabel + ': ' + (data.label || '') : (data.label || '');
-                rtShowProgress(data.step, data.total, itemLabel, data.phase || '');
+                var secs = Math.floor((Date.now() - startTime) / 1000);
+                var elapsed = Math.floor(secs / 60) + ':' + ('0' + (secs % 60)).slice(-2);
+                rtShowProgress(data.step, data.total, itemLabel, data.phase || '', elapsed);
             }
         };
         es.onerror = function() {
@@ -571,13 +575,14 @@ function initRT(\$) {
             document.getElementById('rt-progress-phase').textContent = '';
             document.getElementById('rt-progress-counter').textContent = '';
             document.getElementById('rt-progress-label').textContent = '';
+            document.getElementById('rt-progress-elapsed').textContent = '';
         }
         rtOverlay.style.display = 'block';
     };
     window.rtHideOverlay = function() {
         rtOverlay.style.display = 'none';
     };
-    window.rtShowProgress = function(step, total, label, phase) {
+    window.rtShowProgress = function(step, total, label, phase, elapsed) {
         var pct = total > 0 ? Math.round(step * 100 / total) : 0;
         var bar = document.getElementById('rt-progress-bar');
         bar.style.width = pct + '%';
@@ -591,6 +596,9 @@ function initRT(\$) {
         document.getElementById('rt-progress-counter').textContent = step + ' / ' + total;
         document.getElementById('rt-overlay-msg').textContent = '';
         document.getElementById('rt-progress-label').textContent = label;
+        if (elapsed !== undefined) {
+            document.getElementById('rt-progress-elapsed').textContent = 'Tempo: ' + elapsed;
+        }
     };
     table.on('processing', function(e, settings, processing) {
         if (processing) { rtShowOverlay('Carregando...', false); }
