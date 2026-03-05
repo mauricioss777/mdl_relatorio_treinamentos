@@ -95,27 +95,29 @@ if ($hassiteconfig) {
     ));
 
     // ── 3. Filtros disponíveis no relatório ───────────────────────────────────
-    $all_filter_fields   = \local_relatorio_treinamentos\helper\columns::get_filter_fields();
-    $default_filter_val  = array_fill_keys(array_keys($all_filter_fields), 1);
+    // Filtros: default = campos pré-definidos, opções = todas as 57 colunas
+    $default_filter_keys = array_keys(\local_relatorio_treinamentos\helper\columns::get_filter_fields());
+    $default_filter_val  = array_fill_keys($default_filter_keys, 1);
 
     $settings->add(new local_rt_admin_multiselect(
         'local_relatorio_treinamentos/filtros_visiveis',
         get_string('setting_filtros_visiveis', 'local_relatorio_treinamentos'),
         get_string('setting_filtros_visiveis_desc', 'local_relatorio_treinamentos'),
         $default_filter_val,
-        array_map('htmlspecialchars_decode', $all_filter_fields)
+        array_map('htmlspecialchars_decode', $all_columns)
     ));
 
     // ── 4. Agrupamentos disponíveis para download ZIP ─────────────────────────
-    $all_zip_fields    = \local_relatorio_treinamentos\helper\columns::get_zip_group_fields();
-    $default_zip_val   = array_fill_keys(array_keys($all_zip_fields), 1);
+    // Agrupamentos ZIP: default = campos pré-definidos, opções = todas as 57 colunas
+    $default_zip_keys = array_keys(\local_relatorio_treinamentos\helper\columns::get_zip_group_fields());
+    $default_zip_val  = array_fill_keys($default_zip_keys, 1);
 
     $settings->add(new local_rt_admin_multiselect(
         'local_relatorio_treinamentos/agrupamentos_zip',
         get_string('setting_agrupamentos_zip', 'local_relatorio_treinamentos'),
         get_string('setting_agrupamentos_zip_desc', 'local_relatorio_treinamentos'),
         $default_zip_val,
-        array_map('htmlspecialchars_decode', $all_zip_fields)
+        array_map('htmlspecialchars_decode', $all_columns)
     ));
 
     $ADMIN->add('localplugins', $settings);

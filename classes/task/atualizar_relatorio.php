@@ -23,7 +23,12 @@ class atualizar_relatorio extends \core\task\scheduled_task {
         }
 
         $cache       = \cache::make('local_relatorio_treinamentos', 'relatorio');
-        $filter_keys = array_keys(\local_relatorio_treinamentos\helper\columns::get_filter_fields());
+        // Usa campos de filtro configurados pelo admin (ou os defaults se não configurado)
+        $filtros_saved  = get_config('local_relatorio_treinamentos', 'filtros_visiveis');
+        $all_cols       = \local_relatorio_treinamentos\helper\columns::get_all();
+        $filter_keys    = $filtros_saved
+            ? array_keys(array_intersect_key($all_cols, array_flip(explode(',', $filtros_saved))))
+            : array_keys(\local_relatorio_treinamentos\helper\columns::get_filter_fields());
 
         if ($estrategia === 'cache') {
             ini_set('memory_limit', '4G');

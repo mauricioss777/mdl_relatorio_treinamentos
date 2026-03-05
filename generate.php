@@ -1,12 +1,21 @@
 <?php
+/**
+ * SSE endpoint — gera XLSX ou ZIP com progresso em tempo real.
+ *
+ * Emite eventos SSE:
+ *   data: {"step":N,"total":M,"label":"..."}   — progresso (ZIP)
+ *   data: {"done":true,"token":"...","filename":"..."}  — concluído
+ *   data: {"error":"mensagem"}                 — erro
+ */
 require_once(__DIR__ . '/../../config.php');
+require_once(__DIR__ . '/download_helpers.php');
 
 set_time_limit(0);
 ini_set('memory_limit', '-1');
 
 require_login();
 
-// ── Controle de acesso ────────────────────────────────────────────────────────
+// ── Acesso ────────────────────────────────────────────────────────────────────
 $context           = context_system::instance();
 $is_admin          = is_siteadmin();
 $is_moodle_manager = has_capability('local/relatorio_treinamentos:view', $context);
@@ -34,9 +43,8 @@ $active_filters = $filters_raw  ? json_decode($filters_raw, true)  : [];
 if (!is_array($selected_cols))  $selected_cols  = null;
 if (!is_array($active_filters)) $active_filters = [];
 
-$estrategia     = get_config('local_relatorio_treinamentos', 'estrategia') ?: 'direct';
-$all_columns    = \local_relatorio_treinamentos\helper\columns::get_all();
-$col_keys_valid = array_keys($all_columns);
+$estrategia  = get_config('local_relatorio_treinamentos', 'estrategia') ?: 'direct';
+$all_columns = \local_relatorio_treinamentos\helper\columns::get_all();
 
 // ── Colunas a exportar ────────────────────────────────────────────────────────
 if ($selected_cols) {
@@ -48,9 +56,21 @@ if ($selected_cols) {
     $export_cols = $all_columns;
 }
 
-require_once(__DIR__ . '/download_helpers.php');
+// ── SSE: inicia stream ────────────────────────────────────────────────────────
+@ob_end_clean();
+header('Content-Type: text/event-stream; charset=UTF-8');
+header('Cache-Control: no-cache, no-store');
+header('X-Accel-Buffering: no');
+header('Connection: keep-alive');
 
-// ── WHERE clause para view materializada ──────────────────────────────────────
+$sse_flush = function(array $data): void {
+    echo 'data: ' . json_encode($data, JSON_UNESCAPED_UNICODE) . "\n\n";
+    if (ob_get_level() > 0) ob_flush();
+    flush();
+};
+
+// ── WHERE clause (estratégia view) ───────────────────────────────────────────
+$col_keys_valid = array_keys($all_columns);
 $view_where_sql = '';
 $view_params    = [];
 if ($estrategia === 'view') {
@@ -75,7 +95,7 @@ if ($estrategia === 'view') {
     $view_where_sql = $where_parts ? 'WHERE ' . implode(' AND ', $where_parts) : '';
 }
 
-// ── Dados para estratégias cache / direct ─────────────────────────────────────
+// ── Dados (cache/direct) ─────────────────────────────────────────────────────
 $dados = [];
 if ($estrategia !== 'view') {
     if ($estrategia === 'cache') {
@@ -111,80 +131,61 @@ if ($estrategia !== 'view') {
 $col_keys_exp  = array_keys($export_cols);
 $concluido_idx = array_search('concluido', $col_keys_exp);
 $filename_base = 'relatorio_treinamentos_' . date('Ymd');
+$token         = bin2hex(random_bytes(16));
+$token_path    = sys_get_temp_dir() . '/rt_tok_' . $token . '.json';
 
-// ── CSV ───────────────────────────────────────────────────────────────────────
-if ($formato === 'csv') {
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="' . $filename_base . '.csv"');
-    $out = fopen('php://output', 'w');
-    fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
-    fputcsv($out, array_values($export_cols), ';');
-
-    if ($estrategia === 'view') {
-        $rs = $DB->get_recordset_sql(
-            "SELECT * FROM $view $view_where_sql ORDER BY prof_nome_filial, bas_nome_funcionario, nome_curso",
-            $view_params
-        );
-        foreach ($rs as $row) {
-            fputcsv($out, rt_get_row_values($row, $export_cols), ';');
-        }
-        $rs->close();
-    } else {
-        foreach ($dados as $row) {
-            fputcsv($out, rt_get_row_values($row, $export_cols), ';');
-        }
-    }
-    fclose($out);
-    exit;
-}
-
-// ── XLSX ──────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// XLSX
+// ═════════════════════════════════════════════════════════════════════════════
 if ($formato === 'xlsx') {
-    $tmp_xlsx = sys_get_temp_dir() . '/rt_dl_' . uniqid() . '.xlsx';
+    $sse_flush(['step' => 0, 'total' => 1, 'label' => 'Gerando XLSX...']);
+
+    $out_file = sys_get_temp_dir() . '/rt_gen_' . $token . '.xlsx';
 
     if ($estrategia === 'view') {
         $rs = $DB->get_recordset_sql(
             "SELECT * FROM $view $view_where_sql ORDER BY prof_nome_filial, bas_nome_funcionario, nome_curso",
             $view_params
         );
-        rt_xlsx_stream($export_cols, $rs, $tmp_xlsx, 'Relatório', $concluido_idx);
+        rt_xlsx_stream($export_cols, $rs, $out_file, 'Relatório', $concluido_idx);
         $rs->close();
     } else {
-        rt_xlsx_stream($export_cols, $dados, $tmp_xlsx, 'Relatório', $concluido_idx);
+        rt_xlsx_stream($export_cols, $dados, $out_file, 'Relatório', $concluido_idx);
     }
 
-    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    header('Content-Disposition: attachment; filename="' . $filename_base . '.xlsx"');
-    header('Content-Length: ' . filesize($tmp_xlsx));
-    readfile($tmp_xlsx);
-    unlink($tmp_xlsx);
+    $filename = $filename_base . '.xlsx';
+    file_put_contents($token_path, json_encode([
+        'userid'   => $USER->id,
+        'file'     => $out_file,
+        'filename' => $filename,
+        'expires'  => time() + 300,
+    ]));
+
+    $sse_flush(['done' => true, 'token' => $token, 'filename' => $filename]);
     exit;
 }
 
-// ── ZIP (arquivos CSV internos) ───────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// ZIP
+// ═════════════════════════════════════════════════════════════════════════════
 if ($formato === 'zip') {
     $all_zip_fields   = \local_relatorio_treinamentos\helper\columns::get_zip_group_fields();
     $zip_saved        = get_config('local_relatorio_treinamentos', 'agrupamentos_zip');
     $valid_zip_fields = ($zip_saved !== false && $zip_saved !== '')
         ? array_intersect_key($all_zip_fields, array_flip(explode(',', $zip_saved)))
         : $all_zip_fields;
+
     if (!array_key_exists($zip_group_field, $valid_zip_fields)) {
-        die('Campo de agrupamento inválido.');
-    }
-    if (!class_exists('ZipArchive')) {
-        die('ZipArchive não disponível no servidor.');
+        $sse_flush(['error' => 'Campo de agrupamento inválido.']);
+        exit;
     }
 
-    $tempdir = sys_get_temp_dir() . '/rt_zip_' . uniqid();
+    $tempdir = sys_get_temp_dir() . '/rt_zip_' . $token;
     mkdir($tempdir, 0700, true);
 
-    $bom          = chr(0xEF) . chr(0xBB) . chr(0xBF);
-    $header_line  = array_values($export_cols);
+    $bom         = chr(0xEF) . chr(0xBB) . chr(0xBF);
+    $header_line = array_values($export_cols);
 
-    /**
-     * Escreve um arquivo CSV de grupo em $filepath.
-     * $rows_source pode ser array ou recordset.
-     */
     $write_group_csv = function(string $filepath, iterable $rows_source) use ($export_cols, $bom, $header_line): void {
         $fh = fopen($filepath, 'w');
         fwrite($fh, $bom);
@@ -200,20 +201,20 @@ if ($formato === 'zip') {
     };
 
     if ($estrategia === 'view') {
-        // Busca valores distintos do campo de agrupamento na view
         $group_rows = $DB->get_records_sql(
             "SELECT DISTINCT COALESCE(NULLIF({$zip_group_field}, ''), 'sem_valor') AS val
                FROM {$view} {$view_where_sql}
            ORDER BY 1",
             $view_params
         );
+        $total = count($group_rows);
+        $step  = 0;
 
         foreach ($group_rows as $gr) {
             $gval      = (string)$gr->val;
             $safe_name = rt_safe_filename($gval);
             $temp_csv  = $tempdir . '/' . $safe_name . '.csv';
 
-            // WHERE específico do grupo
             if ($gval === 'sem_valor') {
                 $g_add    = "({$zip_group_field} IS NULL OR {$zip_group_field} = '')";
                 $g_params = $view_params;
@@ -231,10 +232,11 @@ if ($formato === 'zip') {
             );
             $write_group_csv($temp_csv, $rs);
             $rs->close();
-        }
 
+            $step++;
+            $sse_flush(['step' => $step, 'total' => $total, 'label' => $gval]);
+        }
     } else {
-        // cache / direct: agrupa em PHP
         $grupos = [];
         foreach ($dados as $row) {
             $gval = (string)($row->$zip_group_field ?? '');
@@ -243,30 +245,40 @@ if ($formato === 'zip') {
         }
         ksort($grupos);
 
+        $total = count($grupos);
+        $step  = 0;
+
         foreach ($grupos as $grupo_val => $linhas) {
             $safe_name = rt_safe_filename($grupo_val);
             $temp_csv  = $tempdir . '/' . $safe_name . '.csv';
             $write_group_csv($temp_csv, $linhas);
+
+            $step++;
+            $sse_flush(['step' => $step, 'total' => $total, 'label' => $grupo_val]);
         }
     }
 
-    // Empacota tudo em ZIP
+    // Empacota em ZIP
     $zip_name = 'relatorio_treinamentos_' . $zip_group_field . '_' . date('Ymd') . '.zip';
-    $zip_file = $tempdir . '/relatorio.zip';
+    $out_file = sys_get_temp_dir() . '/rt_gen_' . $token . '.zip';
     $zip = new ZipArchive();
-    $zip->open($zip_file, ZipArchive::CREATE);
+    $zip->open($out_file, ZipArchive::CREATE);
     foreach (glob($tempdir . '/*.csv') as $f) {
         $zip->addFile($f, basename($f));
     }
     $zip->close();
-
-    header('Content-Type: application/zip');
-    header('Content-Disposition: attachment; filename="' . $zip_name . '"');
-    header('Content-Length: ' . filesize($zip_file));
-    readfile($zip_file);
-
     array_map('unlink', glob($tempdir . '/*.csv'));
-    unlink($zip_file);
     rmdir($tempdir);
+
+    file_put_contents($token_path, json_encode([
+        'userid'   => $USER->id,
+        'file'     => $out_file,
+        'filename' => $zip_name,
+        'expires'  => time() + 300,
+    ]));
+
+    $sse_flush(['done' => true, 'token' => $token, 'filename' => $zip_name]);
     exit;
 }
+
+$sse_flush(['error' => 'Formato inválido.']);

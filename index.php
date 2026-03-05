@@ -54,7 +54,7 @@ if ($estrategia === 'direct') {
     if (empty($filter_options) && $estrategia === 'view') {
         require_once($CFG->dirroot . '/local/relatorio_treinamentos/locallib.php');
         $view = local_relatorio_treinamentos_get_view_name();
-        $fkeys = array_keys(\local_relatorio_treinamentos\helper\columns::get_filter_fields());
+        $fkeys = array_keys($filter_fields); // usa campos configurados pelo admin
         $filter_options = array_fill_keys($fkeys, []);
         foreach ($fkeys as $field) {
             if ($field === 'nome_curso') continue;
@@ -162,9 +162,51 @@ table.dataTable thead > tr > th.sorting_desc::before,
 table.dataTable thead > tr > th.sorting_desc::after {
     content: '' !important;
 }
+/* ── Loading Overlay ── */
+#rt-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 9999;
+}
+#rt-overlay-box {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: #fff;
+    border-radius: 8px;
+    padding: 28px 40px;
+    text-align: center;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.3);
+    min-width: 180px;
+}
+#rt-overlay-box .spinner-border { width: 2.4rem; height: 2.4rem; }
+#rt-overlay-box p { margin: 14px 0 0; font-size: 0.95rem; color: #444; }
+#rt-overlay-progress { margin-top: 16px; min-width: 280px; }
+#rt-overlay-progress .progress { height: 18px; border-radius: 4px; }
+#rt-overlay-progress .progress-bar { font-size: 0.8rem; line-height: 18px; transition: width 0.3s ease; }
+#rt-overlay-progress small { display: block; margin-top: 5px; font-size: 0.82rem; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>
 
 <div class="container-fluid mt-3">
+
+<!-- ── Loading Overlay ── -->
+<div id="rt-overlay">
+    <div id="rt-overlay-box">
+        <div class="spinner-border text-primary" role="status">
+            <span class="sr-only">Carregando...</span>
+        </div>
+        <p id="rt-overlay-msg">Carregando...</p>
+        <div id="rt-overlay-progress" style="display:none">
+            <div class="progress">
+                <div id="rt-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated"
+                     role="progressbar" style="width:0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+            </div>
+            <small id="rt-progress-label"></small>
+        </div>
+    </div>
+</div>
 
     <!-- Barra de status -->
     <div class="d-flex justify-content-between align-items-center mb-2">
@@ -195,7 +237,7 @@ table.dataTable thead > tr > th.sorting_desc::after {
                 <input type="hidden" name="filters"  id="rt-input-filters">
                 <input type="hidden" name="formato"  id="rt-input-formato">
                 <strong>Tabela filtrada:</strong>
-                <button type="button" id="rt-btn-xlsx" class="btn btn-success btn-sm ml-2" style="display:none" onclick="rtSubmitDownload('xlsx')">
+                <button type="button" id="rt-btn-xlsx" class="btn btn-success btn-sm ml-2" style="display:none" onclick="rtStartSSEDownload('xlsx')">
                     <i class="fa fa-file-excel-o"></i> XLSX
                 </button>
                 <button type="button" class="btn btn-secondary btn-sm ml-1" onclick="rtSubmitDownload('csv')">
@@ -214,7 +256,7 @@ table.dataTable thead > tr > th.sorting_desc::after {
                             <option value="<?php echo s($zkey); ?>"><?php echo s($zlabel); ?></option>
                         <?php endforeach; ?>
                     </select>
-                    <button type="button" class="btn btn-primary btn-sm" onclick="rtFillZipForm(); document.getElementById('rt-zip-form').submit();">
+                    <button type="button" class="btn btn-primary btn-sm" onclick="rtStartSSEDownload('zip', {zip_group_field: document.querySelector('#rt-zip-form [name=zip_group_field]').value})">
                         <i class="fa fa-file-archive-o"></i> Download ZIP
                     </button>
                 </div>
@@ -449,16 +491,91 @@ function initRT(\$) {
     };
 
     // ── Downloads ─────────────────────────────────────────────────────────────
+    /** CSV: envio direto via form submit (rápido, sem SSE) */
     window.rtSubmitDownload = function(formato) {
         document.getElementById('rt-input-col-keys').value = JSON.stringify(visibleCols);
         document.getElementById('rt-input-filters').value  = JSON.stringify(activeFilters);
         document.getElementById('rt-input-formato').value  = formato;
         document.getElementById('rt-download-form').submit();
     };
-    window.rtFillZipForm = function() {
-        document.getElementById('rt-zip-col-keys').value = JSON.stringify(visibleCols);
-        document.getElementById('rt-zip-filters').value  = JSON.stringify(activeFilters);
+
+    /** XLSX / ZIP: geração com SSE + barra de progresso + auto-download */
+    window.rtStartSSEDownload = function(formato, extraParams) {
+        var params = new URLSearchParams({
+            formato:  formato,
+            col_keys: JSON.stringify(visibleCols),
+            filters:  JSON.stringify(activeFilters),
+        });
+        if (extraParams) {
+            Object.keys(extraParams).forEach(function(k) { params.set(k, extraParams[k]); });
+        }
+        var isZip = (formato === 'zip');
+        rtShowOverlay(isZip ? 'Gerando ZIP...' : 'Gerando XLSX...', isZip);
+
+        var url = M.cfg.wwwroot + '/local/relatorio_treinamentos/generate.php?' + params.toString();
+        var es  = new EventSource(url);
+
+        es.onmessage = function(evt) {
+            var data;
+            try { data = JSON.parse(evt.data); } catch(e) { return; }
+
+            if (data.error) {
+                es.close();
+                rtHideOverlay();
+                alert('Erro ao gerar arquivo: ' + data.error);
+                return;
+            }
+            if (data.done) {
+                es.close();
+                rtHideOverlay();
+                var a = document.createElement('a');
+                a.href = M.cfg.wwwroot + '/local/relatorio_treinamentos/serve.php?token=' + data.token;
+                a.download = data.filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                return;
+            }
+            if (data.total) {
+                rtShowProgress(data.step, data.total, data.label || '');
+            }
+        };
+        es.onerror = function() {
+            es.close();
+            rtHideOverlay();
+            alert('Erro de conexão ao gerar arquivo. Tente novamente.');
+        };
     };
+
+    // ── Loading Overlay ──────────────────────────────────────────────────────
+    var rtOverlay = document.getElementById('rt-overlay');
+    window.rtShowOverlay = function(msg, withProgress) {
+        document.getElementById('rt-overlay-msg').textContent = msg || 'Carregando...';
+        document.getElementById('rt-overlay-progress').style.display = withProgress ? '' : 'none';
+        if (withProgress) {
+            var bar = document.getElementById('rt-progress-bar');
+            bar.style.width = '0%';
+            bar.textContent = '0%';
+            document.getElementById('rt-progress-label').textContent = '';
+        }
+        rtOverlay.style.display = 'block';
+    };
+    window.rtHideOverlay = function() {
+        rtOverlay.style.display = 'none';
+    };
+    window.rtShowProgress = function(step, total, label) {
+        var pct = total > 0 ? Math.round(step * 100 / total) : 0;
+        var bar = document.getElementById('rt-progress-bar');
+        bar.style.width = pct + '%';
+        bar.setAttribute('aria-valuenow', pct);
+        bar.textContent = pct + '%';
+        document.getElementById('rt-overlay-msg').textContent = step + ' / ' + total;
+        document.getElementById('rt-progress-label').textContent = label;
+    };
+    table.on('processing', function(e, settings, processing) {
+        if (processing) { rtShowOverlay('Carregando...', false); }
+        else            { rtHideOverlay(); }
+    });
 
 } // initRT
 }); // require jquery
