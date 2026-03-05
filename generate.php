@@ -265,7 +265,7 @@ if ($formato === 'zip') {
             $rs->close();
 
             $step++;
-            $sse_flush(['step' => $step, 'total' => $total * 2, 'label' => $gval]);
+            $sse_flush(['step' => $step, 'total' => $total * 2, 'label' => $gval, 'phase' => 'csv']);
         }
     } else {
         $grupos = [];
@@ -285,7 +285,7 @@ if ($formato === 'zip') {
             $write_group_csv($csv_path, $linhas);
 
             $step++;
-            $sse_flush(['step' => $step, 'total' => $total * 2, 'label' => $grupo_val]);
+            $sse_flush(['step' => $step, 'total' => $total * 2, 'label' => $grupo_val, 'phase' => 'csv']);
         }
     }
 
@@ -308,11 +308,10 @@ if ($formato === 'zip') {
         if ($line !== '') {
             $conv_step++;
             $label = pathinfo($line, PATHINFO_FILENAME);
-            $sse_flush(['step' => $total + $conv_step, 'total' => $total * 2, 'label' => $label]);
+            $sse_flush(['step' => $total + $conv_step, 'total' => $total * 2, 'label' => $label, 'phase' => 'xlsx']);
         }
     }
     fclose($pipes[1]);
-    fclose($pipes[2]);
     if (proc_close($proc) !== 0) {
         $sse_flush(['error' => 'Falha ao converter CSVs para XLSX. Verifique o Python e as dependências.']);
         array_map('unlink', glob($tempdir . '/*'));

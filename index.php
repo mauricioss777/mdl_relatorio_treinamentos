@@ -187,6 +187,7 @@ table.dataTable thead > tr > th.sorting_desc::after {
 #rt-overlay-progress .progress { height: 18px; border-radius: 4px; }
 #rt-overlay-progress .progress-bar { font-size: 0.8rem; line-height: 18px; transition: width 0.3s ease; }
 #rt-overlay-progress small { display: block; margin-top: 5px; font-size: 0.82rem; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#rt-progress-phase { display: block; margin-top: 10px; font-size: 0.92rem; font-weight: 600; color: #333; }
 </style>
 
 <div class="container-fluid mt-3">
@@ -199,10 +200,12 @@ table.dataTable thead > tr > th.sorting_desc::after {
         </div>
         <p id="rt-overlay-msg">Carregando...</p>
         <div id="rt-overlay-progress" style="display:none">
-            <div class="progress">
+            <strong id="rt-progress-phase"></strong>
+            <div class="progress mt-1">
                 <div id="rt-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated"
                      role="progressbar" style="width:0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
             </div>
+            <small id="rt-progress-counter"></small>
             <small id="rt-progress-label"></small>
         </div>
     </div>
@@ -541,7 +544,7 @@ function initRT(\$) {
                 return;
             }
             if (data.total) {
-                rtShowProgress(data.step, data.total, data.label || '');
+                rtShowProgress(data.step, data.total, data.label || '', data.phase || '');
             }
         };
         es.onerror = function() {
@@ -560,6 +563,8 @@ function initRT(\$) {
             var bar = document.getElementById('rt-progress-bar');
             bar.style.width = '0%';
             bar.textContent = '0%';
+            document.getElementById('rt-progress-phase').textContent = '';
+            document.getElementById('rt-progress-counter').textContent = '';
             document.getElementById('rt-progress-label').textContent = '';
         }
         rtOverlay.style.display = 'block';
@@ -567,13 +572,19 @@ function initRT(\$) {
     window.rtHideOverlay = function() {
         rtOverlay.style.display = 'none';
     };
-    window.rtShowProgress = function(step, total, label) {
+    window.rtShowProgress = function(step, total, label, phase) {
         var pct = total > 0 ? Math.round(step * 100 / total) : 0;
         var bar = document.getElementById('rt-progress-bar');
         bar.style.width = pct + '%';
         bar.setAttribute('aria-valuenow', pct);
         bar.textContent = pct + '%';
-        document.getElementById('rt-overlay-msg').textContent = step + ' / ' + total;
+        if (phase === 'csv') {
+            document.getElementById('rt-progress-phase').textContent = 'Extraindo dados';
+        } else if (phase === 'xlsx') {
+            document.getElementById('rt-progress-phase').textContent = 'Gerando planilhas';
+        }
+        document.getElementById('rt-progress-counter').textContent = step + ' / ' + total;
+        document.getElementById('rt-overlay-msg').textContent = '';
         document.getElementById('rt-progress-label').textContent = label;
     };
     table.on('processing', function(e, settings, processing) {
