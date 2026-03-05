@@ -294,7 +294,7 @@ if ($formato === 'zip') {
     $py_cmd    = escapeshellarg(local_relatorio_treinamentos_get_python_path())
                . ' ' . escapeshellarg($py_script)
                . ' --dir ' . escapeshellarg($tempdir);
-    $proc = proc_open($py_cmd, [0 => ['pipe', 'r'], 1 => ['pipe', 'r'], 2 => ['file', '/dev/null', 'w']], $pipes);
+    $proc = proc_open($py_cmd, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes);
     if (!is_resource($proc)) {
         $sse_flush(['error' => 'Falha ao iniciar Python.']);
         array_map('unlink', glob($tempdir . '/*'));
