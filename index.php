@@ -499,12 +499,14 @@ function initRT(\$) {
     };
 
     // ── Downloads ─────────────────────────────────────────────────────────────
-    /** CSV: envio direto via form submit (rápido, sem SSE) */
+    /** CSV: envio direto via form submit com overlay de feedback */
     window.rtSubmitDownload = function(formato) {
         document.getElementById('rt-input-col-keys').value = JSON.stringify(visibleCols);
         document.getElementById('rt-input-filters').value  = JSON.stringify(activeFilters);
         document.getElementById('rt-input-formato').value  = formato;
+        rtShowOverlay('Gerando CSV...');
         document.getElementById('rt-download-form').submit();
+        setTimeout(rtHideOverlay, 4000);
     };
 
     /** XLSX / ZIP: geração com SSE + barra de progresso + auto-download */
