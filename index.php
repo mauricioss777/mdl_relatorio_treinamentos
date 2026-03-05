@@ -236,7 +236,7 @@ table.dataTable thead > tr > th.sorting_desc::after {
     <!-- ── Painel de Downloads ── -->
     <div class="collapse mb-3" id="rt-download-panel">
         <div class="card"><div class="card-body py-3">
-            <form id="rt-download-form" method="post" action="download.php" target="_blank">
+            <form id="rt-download-form" method="post" action="download.php">
                 <input type="hidden" name="col_keys" id="rt-input-col-keys">
                 <input type="hidden" name="filters"  id="rt-input-filters">
                 <input type="hidden" name="formato"  id="rt-input-formato">
