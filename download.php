@@ -32,42 +32,66 @@ $active_filters = $filters_raw ? json_decode($filters_raw, true) : [];
 if (!is_array($selected_cols)) $selected_cols = null;
 if (!is_array($active_filters)) $active_filters = [];
 
-// ── Dados: cache ou consulta direta ──────────────────────────────────────────
-$usar_cache = (bool)get_config('local_relatorio_treinamentos', 'usar_cache');
-if ($usar_cache) {
-    $cache = \cache::make('local_relatorio_treinamentos', 'relatorio');
-    $dados = $cache->get('dados');
-    if ($dados === false) {
-        $task = new \local_relatorio_treinamentos\task\atualizar_relatorio();
-        $task->execute();
-        $dados = $cache->get('dados');
-    }
-} else {
-    ini_set('memory_limit', '4G');
-    $dados = \local_relatorio_treinamentos\task\atualizar_relatorio::buscar_dados($DB);
-}
-$dados = array_values((array)$dados);
-
-// ── Filtro de acesso para gestores ────────────────────────────────────────────
-if (!$is_admin && !$is_moodle_manager && $is_gestor) {
-    $gestor_nome = fullname($USER);
-    $dados = array_filter($dados, function($row) use ($gestor_nome) {
-        return ($row->gestor ?? '') === $gestor_nome;
-    });
-}
-
-// ── Aplicar filtros do usuário ────────────────────────────────────────────────
+// ── Dados: view / cache / consulta direta ────────────────────────────────────
+$estrategia  = get_config('local_relatorio_treinamentos', 'estrategia') ?: 'direct';
 $all_columns = \local_relatorio_treinamentos\helper\columns::get_all();
 $col_keys_valid = array_keys($all_columns);
 
-if (!empty($active_filters)) {
-    $dados = array_filter($dados, function($row) use ($active_filters) {
-        foreach ($active_filters as $field => $value) {
-            if ($value === '' || $value === null) continue;
-            if (($row->$field ?? '') !== $value) return false;
+if ($estrategia === 'view') {
+    require_once($CFG->dirroot . '/local/relatorio_treinamentos/locallib.php');
+    $view = local_relatorio_treinamentos_get_view_name();
+
+    $where_parts = [];
+    $sql_params  = [];
+    $pcount      = 0;
+
+    if (!$is_admin && !$is_moodle_manager && $is_gestor) {
+        $where_parts[] = "gestor = :wgestor";
+        $sql_params['wgestor'] = fullname($USER);
+    }
+    foreach ($active_filters as $field => $value) {
+        $value = trim((string)$value);
+        $field = clean_param($field, PARAM_ALPHANUMEXT);
+        if ($value === '' || !in_array($field, $col_keys_valid)) continue;
+        $pname = 'wf' . $pcount++;
+        $where_parts[] = "$field = :$pname";
+        $sql_params[$pname] = $value;
+    }
+    $where_sql = $where_parts ? 'WHERE ' . implode(' AND ', $where_parts) : '';
+    $dados = array_values((array)$DB->get_records_sql(
+        "SELECT * FROM $view $where_sql ORDER BY prof_nome_filial, bas_nome_funcionario, nome_curso",
+        $sql_params
+    ));
+} else {
+    if ($estrategia === 'cache') {
+        $cache = \cache::make('local_relatorio_treinamentos', 'relatorio');
+        $dados = $cache->get('dados');
+        if ($dados === false) {
+            $task = new \local_relatorio_treinamentos\task\atualizar_relatorio();
+            $task->execute();
+            $dados = $cache->get('dados');
         }
-        return true;
-    });
+    } else {
+        ini_set('memory_limit', '4G');
+        $dados = \local_relatorio_treinamentos\task\atualizar_relatorio::buscar_dados($DB);
+    }
+    $dados = array_values((array)$dados);
+
+    if (!$is_admin && !$is_moodle_manager && $is_gestor) {
+        $gestor_nome = fullname($USER);
+        $dados = array_filter($dados, function($row) use ($gestor_nome) {
+            return ($row->gestor ?? '') === $gestor_nome;
+        });
+    }
+    if (!empty($active_filters)) {
+        $dados = array_filter($dados, function($row) use ($active_filters) {
+            foreach ($active_filters as $field => $value) {
+                if ($value === '' || $value === null) continue;
+                if (($row->$field ?? '') !== $value) return false;
+            }
+            return true;
+        });
+    }
 }
 
 // ── Colunas a exportar ────────────────────────────────────────────────────────

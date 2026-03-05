@@ -19,12 +19,19 @@ if ($hassiteconfig) {
         array_map('htmlspecialchars', $all_columns)
     ));
 
-    $settings->add(new admin_setting_configcheckbox(
-        'local_relatorio_treinamentos/usar_cache',
-        'Usar cache da task agendada',
-        'Quando habilitado, os dados são lidos do cache gerado pela task de 02h. ' .
-        'Quando desabilitado, a consulta SQL é executada diretamente a cada requisição (modo de teste de performance).',
-        0
+    $settings->add(new admin_setting_configselect(
+        'local_relatorio_treinamentos/estrategia',
+        'Estratégia de dados',
+        'Define como os dados do relatório são obtidos. ' .
+        '<b>Consulta direta:</b> executa o SQL a cada requisição (mais lento, sem setup). ' .
+        '<b>Cache:</b> usa o cache gerado pela task de 02h (rápido, 4 GB RAM). ' .
+        '<b>View materializada:</b> consulta a view pré-computada com índices (mais rápido, recomendado para produção).',
+        'view',
+        [
+            'direct' => 'Consulta direta (SQL a cada requisição)',
+            'cache'  => 'Cache da task agendada (array PHP)',
+            'view'   => 'View materializada (recomendado)',
+        ]
     ));
 
     $ADMIN->add('localplugins', $settings);

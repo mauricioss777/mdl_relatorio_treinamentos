@@ -53,9 +53,107 @@ if (!is_array($filters)) {
     $filters = [];
 }
 
-// ── Carregar dados: cache ou consulta direta ──────────────────────────────────
-$usar_cache = (bool)get_config('local_relatorio_treinamentos', 'usar_cache');
-if ($usar_cache) {
+// ── Colunas disponíveis (whitelist para SQL injection prevention) ─────────────
+$all_columns  = \local_relatorio_treinamentos\helper\columns::get_all();
+$column_keys  = array_keys($all_columns);
+$estrategia   = get_config('local_relatorio_treinamentos', 'estrategia') ?: 'direct';
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ESTRATÉGIA: view materializada — paginação SQL real (mais eficiente)
+// ══════════════════════════════════════════════════════════════════════════════
+if ($estrategia === 'view') {
+    require_once($CFG->dirroot . '/local/relatorio_treinamentos/locallib.php');
+    $view = local_relatorio_treinamentos_get_view_name();
+
+    // ── WHERE: acesso + filtros + busca global ────────────────────────────────
+    $where_parts = [];
+    $sql_params  = [];
+    $pcount      = 0;
+
+    if (!$is_admin && !$is_moodle_manager && $is_gestor) {
+        $where_parts[] = "gestor = :wgestor";
+        $sql_params['wgestor'] = fullname($USER);
+    }
+
+    foreach ($filters as $field => $value) {
+        $value = trim((string)$value);
+        $field = clean_param($field, PARAM_ALPHANUMEXT);
+        if ($value === '' || !in_array($field, $column_keys)) continue;
+        $pname = 'wf' . $pcount++;
+        $where_parts[] = "$field = :$pname";
+        $sql_params[$pname] = $value;
+    }
+
+    if ($search_val !== '') {
+        $search_fields  = ['bas_nome_funcionario', 'bas_email', 'nome_curso', 'prof_nome_filial', 'prof_codigo_filial'];
+        $search_parts   = [];
+        foreach ($search_fields as $sf) {
+            $pname = 'ws_' . $sf;
+            $search_parts[]   = $DB->sql_like($sf, ":$pname", false);
+            $sql_params[$pname] = '%' . $DB->sql_like_escape($search_val) . '%';
+        }
+        $where_parts[] = '(' . implode(' OR ', $search_parts) . ')';
+    }
+
+    $where_sql = $where_parts ? 'WHERE ' . implode(' AND ', $where_parts) : '';
+
+    // ── Contagens ─────────────────────────────────────────────────────────────
+    $access_where  = '';
+    $access_params = [];
+    if (!$is_admin && !$is_moodle_manager && $is_gestor) {
+        $access_where  = 'WHERE gestor = :agestor';
+        $access_params['agestor'] = fullname($USER);
+    }
+    $records_total    = (int)$DB->count_records_sql("SELECT COUNT(*) FROM $view $access_where", $access_params);
+    $records_filtered = (int)$DB->count_records_sql("SELECT COUNT(*) FROM $view $where_sql", $sql_params);
+
+    // ── Ordenação (whitelist) ─────────────────────────────────────────────────
+    $col_idx  = (int)($order_raw[0]['column'] ?? 0);
+    $sort_key = $column_keys[$col_idx] ?? $column_keys[0];
+    $sort_dir = (($order_raw[0]['dir'] ?? 'asc') === 'desc') ? 'DESC' : 'ASC';
+
+    // ── Dados paginados (apenas a página atual sai do DB) ─────────────────────
+    $rows = $DB->get_records_sql(
+        "SELECT * FROM $view $where_sql ORDER BY $sort_key $sort_dir",
+        $sql_params,
+        $start,
+        max(1, $length)
+    );
+
+    $data = [];
+    foreach ($rows as $row) {
+        $rowdata = [];
+        foreach ($column_keys as $key) {
+            $val = $row->$key ?? '';
+            if ($key === 'progresso_percentual') {
+                $pct       = number_format((float)$val, 2);
+                $rowdata[] = '<div class="progress rt-progress" title="' . $pct . '%">'
+                           . '<div class="progress-bar bg-success" role="progressbar" style="width:' . $pct . '%"></div>'
+                           . '</div><small>' . $pct . '%</small>';
+            } elseif ($key === 'concluido') {
+                $rowdata[] = ($val === 'Sim')
+                    ? '<span class="badge badge-success">Sim</span>'
+                    : '<span class="badge badge-secondary">Não</span>';
+            } else {
+                $rowdata[] = s((string)$val);
+            }
+        }
+        $data[] = $rowdata;
+    }
+
+    echo json_encode([
+        'draw'            => $draw,
+        'recordsTotal'    => $records_total,
+        'recordsFiltered' => $records_filtered,
+        'data'            => $data,
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ESTRATÉGIA: cache ou consulta direta — mantém lógica PHP original
+// ══════════════════════════════════════════════════════════════════════════════
+if ($estrategia === 'cache') {
     $cache = \cache::make('local_relatorio_treinamentos', 'relatorio');
     $dados = $cache->get('dados');
     if ($dados === false) {
@@ -82,9 +180,7 @@ $records_total = count($dados);
 // ── Filtros customizados ──────────────────────────────────────────────────────
 foreach ($filters as $field => $value) {
     $value = trim((string)$value);
-    if ($value === '') {
-        continue;
-    }
+    if ($value === '') { continue; }
     $field = clean_param($field, PARAM_ALPHANUMEXT);
     $dados = array_values(array_filter($dados, function($row) use ($field, $value) {
         return (string)($row->$field ?? '') === $value;
@@ -96,9 +192,7 @@ if ($search_val !== '') {
     $needle = mb_strtolower($search_val);
     $dados  = array_values(array_filter($dados, function($row) use ($needle) {
         foreach ((array)$row as $val) {
-            if (mb_strpos(mb_strtolower((string)$val), $needle) !== false) {
-                return true;
-            }
+            if (mb_strpos(mb_strtolower((string)$val), $needle) !== false) return true;
         }
         return false;
     }));
@@ -107,13 +201,10 @@ if ($search_val !== '') {
 $records_filtered = count($dados);
 
 // ── Ordenação ─────────────────────────────────────────────────────────────────
-$column_keys = array_keys(\local_relatorio_treinamentos\helper\columns::get_all());
-
 if (!empty($order_raw)) {
     $col_idx = (int)($order_raw[0]['column'] ?? 0);
     $dir     = (($order_raw[0]['dir'] ?? 'asc') === 'desc') ? -1 : 1;
     $col_key = $column_keys[$col_idx] ?? $column_keys[0];
-
     usort($dados, function($a, $b) use ($col_key, $dir) {
         $va = (string)($a->$col_key ?? '');
         $vb = (string)($b->$col_key ?? '');
@@ -122,11 +213,7 @@ if (!empty($order_raw)) {
 }
 
 // ── Paginação ─────────────────────────────────────────────────────────────────
-if ($length > 0) {
-    $page = array_slice($dados, $start, $length);
-} else {
-    $page = array_slice($dados, $start);
-}
+$page = ($length > 0) ? array_slice($dados, $start, $length) : array_slice($dados, $start);
 
 // ── Montar array de dados para o DataTables ───────────────────────────────────
 $data = [];

@@ -12,37 +12,69 @@ class atualizar_relatorio extends \core\task\scheduled_task {
     }
 
     public function execute() {
-        ini_set('memory_limit', '4G');
-        global $DB;
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/local/relatorio_treinamentos/locallib.php');
 
-        $dados = self::buscar_dados($DB);
+        $estrategia = get_config('local_relatorio_treinamentos', 'estrategia') ?: 'direct';
 
-        // Pré-computa opções de filtro (evita ler os 236k registros na web)
+        if ($estrategia === 'direct') {
+            mtrace('Estratégia: consulta direta — task não precisa fazer nada.');
+            return;
+        }
+
+        $cache       = \cache::make('local_relatorio_treinamentos', 'relatorio');
         $filter_keys = array_keys(\local_relatorio_treinamentos\helper\columns::get_filter_fields());
-        $filter_options = array_fill_keys($filter_keys, []);
-        foreach ($dados as $row) {
-            foreach ($filter_keys as $field) {
-                $v = (string)($row->$field ?? '');
-                if ($v !== '') {
-                    $filter_options[$field][$v] = $v;
+
+        if ($estrategia === 'cache') {
+            ini_set('memory_limit', '4G');
+            $dados = self::buscar_dados($DB);
+
+            $filter_options = array_fill_keys($filter_keys, []);
+            foreach ($dados as $row) {
+                foreach ($filter_keys as $field) {
+                    $v = (string)($row->$field ?? '');
+                    if ($v !== '') { $filter_options[$field][$v] = $v; }
                 }
             }
+            foreach ($filter_options as &$vals) { asort($vals); }
+            unset($vals);
+
+            $cursos_filtro = self::get_cursos_no_filtro($DB);
+            if (!empty($cursos_filtro)) {
+                $filter_options['nome_curso'] = $cursos_filtro;
+            }
+
+            $cache->set('dados', $dados);
+            $cache->set('filter_options', $filter_options);
+            $cache->set('ultima_atualizacao', time());
+            mtrace('Cache atualizado: ' . count($dados) . ' registros.');
+
+        } elseif ($estrategia === 'view') {
+            // Atualiza a view no PostgreSQL (sem carregar dados no PHP)
+            mtrace('Atualizando view materializada...');
+            local_relatorio_treinamentos_refresh_matview($DB);
+            mtrace('View atualizada.');
+
+            // Computa filter_options via queries DISTINCT na view (rápido com índices)
+            $view = local_relatorio_treinamentos_get_view_name();
+            $filter_options = array_fill_keys($filter_keys, []);
+            foreach ($filter_keys as $field) {
+                if ($field === 'nome_curso') continue;
+                $rows = $DB->get_records_sql(
+                    "SELECT DISTINCT $field AS val FROM $view WHERE $field IS NOT NULL AND $field <> '' ORDER BY $field"
+                );
+                foreach ($rows as $row) {
+                    $v = $row->val;
+                    if ($v !== '') { $filter_options[$field][$v] = $v; }
+                }
+            }
+            $filter_options['nome_curso'] = self::get_cursos_no_filtro($DB);
+
+            $cache->set('filter_options', $filter_options);
+            $cache->set('ultima_atualizacao', time());
+            // Não armazena 'dados' — a view é a fonte de dados para o modo view
+            mtrace('filter_options atualizados da view materializada.');
         }
-        foreach ($filter_options as &$vals) { asort($vals); }
-        unset($vals);
-
-        // Cursos com campo personalizado rt_incluir_filtro = 1 definem as opções do filtro nome_curso
-        $cursos_filtro = self::get_cursos_no_filtro($DB);
-        if (!empty($cursos_filtro)) {
-            $filter_options['nome_curso'] = $cursos_filtro;
-        }
-
-        $cache = \cache::make('local_relatorio_treinamentos', 'relatorio');
-        $cache->set('dados', $dados);
-        $cache->set('filter_options', $filter_options);
-        $cache->set('ultima_atualizacao', time());
-
-        mtrace('Relatório de treinamentos atualizado: ' . count($dados) . ' registros.');
     }
 
     /**
@@ -68,6 +100,14 @@ class atualizar_relatorio extends \core\task\scheduled_task {
     }
 
     public static function buscar_dados($DB) {
+        global $CFG;
+        require_once($CFG->dirroot . '/local/relatorio_treinamentos/locallib.php');
+        $sql = local_relatorio_treinamentos_get_report_sql();
+        return $DB->get_records_sql($sql);
+    }
+
+    /** @deprecated use buscar_dados_UNUSED_PLACEHOLDER */
+    private static function _sql_placeholder() {
         $sql = "
             SELECT
                 -- Chave única por combinação usuário+curso
@@ -262,6 +302,6 @@ class atualizar_relatorio extends \core\task\scheduled_task {
             ORDER BY prof_nome_filial, bas_nome_funcionario, nome_curso
         ";
 
-        return $DB->get_records_sql($sql);
+        return "UNUSED";
     }
 }

@@ -26,16 +26,12 @@ $PAGE->set_title('Relatório de Treinamentos');
 $PAGE->set_heading('Relatório de Treinamentos');
 $PAGE->set_pagelayout('admin');
 
-// ── Metadados: cache ou consulta direta ──────────────────────────────────────
-$usar_cache = (bool)get_config('local_relatorio_treinamentos', 'usar_cache');
-if ($usar_cache) {
-    $cache              = \cache::make('local_relatorio_treinamentos', 'relatorio');
-    $ultima_atualizacao = $cache->get('ultima_atualizacao');
-    $filter_options     = $cache->get('filter_options') ?: [];
-} else {
+// ── Metadados: cache/view (lê cache), direct (computa na hora) ───────────────
+$estrategia = get_config('local_relatorio_treinamentos', 'estrategia') ?: 'direct';
+if ($estrategia === 'direct') {
     $ultima_atualizacao = null;
     ini_set('memory_limit', '4G');
-    $dados_temp = \local_relatorio_treinamentos\task\atualizar_relatorio::buscar_dados($DB);
+    $dados_temp  = \local_relatorio_treinamentos\task\atualizar_relatorio::buscar_dados($DB);
     $filter_keys = array_keys(\local_relatorio_treinamentos\helper\columns::get_filter_fields());
     $filter_options = array_fill_keys($filter_keys, []);
     foreach ($dados_temp as $row) {
@@ -46,12 +42,13 @@ if ($usar_cache) {
     }
     foreach ($filter_options as &$vals) { asort($vals); }
     unset($vals, $dados_temp);
-
-    // Sobrescreve filtro de curso com campo personalizado
     $cursos_filtro = \local_relatorio_treinamentos\task\atualizar_relatorio::get_cursos_no_filtro($DB);
-    if (!empty($cursos_filtro)) {
-        $filter_options['nome_curso'] = $cursos_filtro;
-    }
+    if (!empty($cursos_filtro)) { $filter_options['nome_curso'] = $cursos_filtro; }
+} else {
+    // 'cache' e 'view': task pré-computa filter_options e grava no cache
+    $cache              = \cache::make('local_relatorio_treinamentos', 'relatorio');
+    $ultima_atualizacao = $cache->get('ultima_atualizacao');
+    $filter_options     = $cache->get('filter_options') ?: [];
 }
 
 $ultima_str = $ultima_atualizacao
