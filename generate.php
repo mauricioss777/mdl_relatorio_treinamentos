@@ -191,9 +191,14 @@ if ($formato === 'xlsx') {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// ZIP
+// ZIP (arquivos XLSX por grupo, via Python/pandas)
 // ═════════════════════════════════════════════════════════════════════════════
 if ($formato === 'zip') {
+    if (!local_relatorio_treinamentos_get_python_path()) {
+        $sse_flush(['error' => 'Python não configurado no servidor. Defina "pathtopython" nas configurações do Moodle.']);
+        exit;
+    }
+
     $all_zip_fields   = \local_relatorio_treinamentos\helper\columns::get_zip_group_fields();
     $zip_saved        = get_config('local_relatorio_treinamentos', 'agrupamentos_zip');
     $valid_zip_fields = ($zip_saved !== false && $zip_saved !== '')
@@ -211,8 +216,9 @@ if ($formato === 'zip') {
     $bom         = chr(0xEF) . chr(0xBB) . chr(0xBF);
     $header_line = array_values($export_cols);
 
-    $write_group_csv = function(string $filepath, iterable $rows_source) use ($export_cols, $bom, $header_line): void {
-        $fh = fopen($filepath, 'w');
+    /** Grava CSV de grupo em disco (sem conversão — lote será convertido de uma vez). */
+    $write_group_csv = function(string $csv_path, iterable $rows_source) use ($export_cols, $bom, $header_line): void {
+        $fh = fopen($csv_path, 'w');
         fwrite($fh, $bom);
         fputcsv($fh, $header_line, ';');
         foreach ($rows_source as $row) {
@@ -238,7 +244,7 @@ if ($formato === 'zip') {
         foreach ($group_rows as $gr) {
             $gval      = (string)$gr->val;
             $safe_name = rt_safe_filename($gval);
-            $temp_csv  = $tempdir . '/' . $safe_name . '.csv';
+            $csv_path  = $tempdir . '/' . $safe_name . '.csv';
 
             if ($gval === 'sem_valor') {
                 $g_add    = "({$zip_group_field} IS NULL OR {$zip_group_field} = '')";
@@ -255,11 +261,11 @@ if ($formato === 'zip') {
                 "SELECT * FROM {$view} {$g_where} ORDER BY bas_nome_funcionario, nome_curso",
                 $g_params
             );
-            $write_group_csv($temp_csv, $rs);
+            $write_group_csv($csv_path, $rs);
             $rs->close();
 
             $step++;
-            $sse_flush(['step' => $step, 'total' => $total, 'label' => $gval]);
+            $sse_flush(['step' => $step, 'total' => $total + 1, 'label' => $gval]);
         }
     } else {
         $grupos = [];
@@ -275,12 +281,21 @@ if ($formato === 'zip') {
 
         foreach ($grupos as $grupo_val => $linhas) {
             $safe_name = rt_safe_filename($grupo_val);
-            $temp_csv  = $tempdir . '/' . $safe_name . '.csv';
-            $write_group_csv($temp_csv, $linhas);
+            $csv_path  = $tempdir . '/' . $safe_name . '.csv';
+            $write_group_csv($csv_path, $linhas);
 
             $step++;
-            $sse_flush(['step' => $step, 'total' => $total, 'label' => $grupo_val]);
+            $sse_flush(['step' => $step, 'total' => $total + 1, 'label' => $grupo_val]);
         }
+    }
+
+    // Converte todos os CSVs para XLSX em uma única chamada Python
+    $sse_flush(['step' => $total + 1, 'total' => $total + 1, 'label' => 'Convertendo para XLSX...']);
+    if (!local_relatorio_treinamentos_csv_dir_to_xlsx($tempdir)) {
+        $sse_flush(['error' => 'Falha ao converter CSVs para XLSX. Verifique o Python e as dependências.']);
+        array_map('unlink', glob($tempdir . '/*'));
+        rmdir($tempdir);
+        exit;
     }
 
     // Empacota em ZIP
@@ -288,11 +303,11 @@ if ($formato === 'zip') {
     $out_file = sys_get_temp_dir() . '/rt_gen_' . $token . '.zip';
     $zip = new ZipArchive();
     $zip->open($out_file, ZipArchive::CREATE);
-    foreach (glob($tempdir . '/*.csv') as $f) {
+    foreach (glob($tempdir . '/*.xlsx') as $f) {
         $zip->addFile($f, basename($f));
     }
     $zip->close();
-    array_map('unlink', glob($tempdir . '/*.csv'));
+    array_map('unlink', glob($tempdir . '/*.xlsx'));
     rmdir($tempdir);
 
     file_put_contents($token_path, json_encode([

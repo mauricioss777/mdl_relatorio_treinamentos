@@ -237,7 +237,7 @@ table.dataTable thead > tr > th.sorting_desc::after {
                 <input type="hidden" name="filters"  id="rt-input-filters">
                 <input type="hidden" name="formato"  id="rt-input-formato">
                 <strong>Tabela filtrada:</strong>
-                <button type="button" id="rt-btn-xlsx" class="btn btn-success btn-sm ml-2" style="display:none" onclick="rtStartSSEDownload('xlsx')">
+                <button type="button" id="rt-btn-xlsx" class="btn btn-success btn-sm ml-2" onclick="rtStartSSEDownload('xlsx')">
                     <i class="fa fa-file-excel-o"></i> XLSX
                 </button>
                 <button type="button" class="btn btn-secondary btn-sm ml-1" onclick="rtSubmitDownload('csv')">
@@ -486,13 +486,11 @@ function initRT(\$) {
         document.querySelectorAll('.rt-filter-select').forEach(function(sel) {
             if (sel.value) { activeFilters[sel.dataset.filterField] = sel.value; }
         });
-        document.getElementById('rt-btn-xlsx').style.display = Object.keys(activeFilters).length > 0 ? '' : 'none';
         table.ajax.reload();
     });
     window.rtClearFilters = function() {
         activeFilters = {};
         document.querySelectorAll('.rt-filter-select').forEach(function(s) { s.value = ''; });
-        document.getElementById('rt-btn-xlsx').style.display = 'none';
         table.ajax.reload();
     };
 

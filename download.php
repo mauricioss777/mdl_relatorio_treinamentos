@@ -161,8 +161,14 @@ if ($formato === 'xlsx') {
     exit;
 }
 
-// ── ZIP (arquivos CSV internos) ───────────────────────────────────────────────
+// ── ZIP (arquivos XLSX por grupo, via Python/pandas) ─────────────────────────
 if ($formato === 'zip') {
+    require_once($CFG->dirroot . '/local/relatorio_treinamentos/locallib.php');
+
+    if (!local_relatorio_treinamentos_get_python_path()) {
+        http_response_code(503);
+        die('Python não configurado no servidor. Defina "pathtopython" nas configurações do Moodle.');
+    }
     $all_zip_fields   = \local_relatorio_treinamentos\helper\columns::get_zip_group_fields();
     $zip_saved        = get_config('local_relatorio_treinamentos', 'agrupamentos_zip');
     $valid_zip_fields = ($zip_saved !== false && $zip_saved !== '')
@@ -171,22 +177,15 @@ if ($formato === 'zip') {
     if (!array_key_exists($zip_group_field, $valid_zip_fields)) {
         die('Campo de agrupamento inválido.');
     }
-    if (!class_exists('ZipArchive')) {
-        die('ZipArchive não disponível no servidor.');
-    }
 
     $tempdir = sys_get_temp_dir() . '/rt_zip_' . uniqid();
     mkdir($tempdir, 0700, true);
 
-    $bom          = chr(0xEF) . chr(0xBB) . chr(0xBF);
-    $header_line  = array_values($export_cols);
+    $bom         = chr(0xEF) . chr(0xBB) . chr(0xBF);
+    $header_line = array_values($export_cols);
 
-    /**
-     * Escreve um arquivo CSV de grupo em $filepath.
-     * $rows_source pode ser array ou recordset.
-     */
-    $write_group_csv = function(string $filepath, iterable $rows_source) use ($export_cols, $bom, $header_line): void {
-        $fh = fopen($filepath, 'w');
+    $write_group_csv = function(string $csv_path, iterable $rows_source) use ($export_cols, $bom, $header_line): void {
+        $fh = fopen($csv_path, 'w');
         fwrite($fh, $bom);
         fputcsv($fh, $header_line, ';');
         foreach ($rows_source as $row) {
@@ -200,7 +199,6 @@ if ($formato === 'zip') {
     };
 
     if ($estrategia === 'view') {
-        // Busca valores distintos do campo de agrupamento na view
         $group_rows = $DB->get_records_sql(
             "SELECT DISTINCT COALESCE(NULLIF({$zip_group_field}, ''), 'sem_valor') AS val
                FROM {$view} {$view_where_sql}
@@ -211,9 +209,8 @@ if ($formato === 'zip') {
         foreach ($group_rows as $gr) {
             $gval      = (string)$gr->val;
             $safe_name = rt_safe_filename($gval);
-            $temp_csv  = $tempdir . '/' . $safe_name . '.csv';
+            $csv_path  = $tempdir . '/' . $safe_name . '.csv';
 
-            // WHERE específico do grupo
             if ($gval === 'sem_valor') {
                 $g_add    = "({$zip_group_field} IS NULL OR {$zip_group_field} = '')";
                 $g_params = $view_params;
@@ -229,12 +226,11 @@ if ($formato === 'zip') {
                 "SELECT * FROM {$view} {$g_where} ORDER BY bas_nome_funcionario, nome_curso",
                 $g_params
             );
-            $write_group_csv($temp_csv, $rs);
+            $write_group_csv($csv_path, $rs);
             $rs->close();
         }
 
     } else {
-        // cache / direct: agrupa em PHP
         $grupos = [];
         foreach ($dados as $row) {
             $gval = (string)($row->$zip_group_field ?? '');
@@ -245,17 +241,24 @@ if ($formato === 'zip') {
 
         foreach ($grupos as $grupo_val => $linhas) {
             $safe_name = rt_safe_filename($grupo_val);
-            $temp_csv  = $tempdir . '/' . $safe_name . '.csv';
-            $write_group_csv($temp_csv, $linhas);
+            $csv_path  = $tempdir . '/' . $safe_name . '.csv';
+            $write_group_csv($csv_path, $linhas);
         }
     }
 
-    // Empacota tudo em ZIP
+    // Converte todos os CSVs para XLSX em uma única chamada Python
+    if (!local_relatorio_treinamentos_csv_dir_to_xlsx($tempdir)) {
+        array_map('unlink', glob($tempdir . '/*'));
+        rmdir($tempdir);
+        http_response_code(500);
+        die('Falha ao converter CSVs para XLSX.');
+    }
+
     $zip_name = 'relatorio_treinamentos_' . $zip_group_field . '_' . date('Ymd') . '.zip';
     $zip_file = $tempdir . '/relatorio.zip';
     $zip = new ZipArchive();
     $zip->open($zip_file, ZipArchive::CREATE);
-    foreach (glob($tempdir . '/*.csv') as $f) {
+    foreach (glob($tempdir . '/*.xlsx') as $f) {
         $zip->addFile($f, basename($f));
     }
     $zip->close();
@@ -265,7 +268,7 @@ if ($formato === 'zip') {
     header('Content-Length: ' . filesize($zip_file));
     readfile($zip_file);
 
-    array_map('unlink', glob($tempdir . '/*.csv'));
+    array_map('unlink', glob($tempdir . '/*.xlsx'));
     unlink($zip_file);
     rmdir($tempdir);
     exit;

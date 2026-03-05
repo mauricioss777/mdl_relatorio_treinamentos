@@ -301,3 +301,29 @@ function local_relatorio_treinamentos_csv_to_xlsx(string $csv_path, string $xlsx
 
     return $retcode === 0 && file_exists($xlsx_path);
 }
+
+/**
+ * Converte todos os arquivos CSV de um diretório para XLSX usando Python/pandas.
+ * Chama Python UMA única vez para todo o lote — muito mais eficiente que
+ * chamar local_relatorio_treinamentos_csv_to_xlsx() por arquivo.
+ * Remove os CSVs após a conversão.
+ *
+ * @param string $dir  Diretório com *.csv a converter.
+ * @return bool  true se o comando retornou 0, false caso contrário.
+ */
+function local_relatorio_treinamentos_csv_dir_to_xlsx(string $dir): bool {
+    $python = local_relatorio_treinamentos_get_python_path();
+    $script = __DIR__ . '/cli/csv_to_xlsx.py';
+
+    if (!$python || !file_exists($script)) {
+        return false;
+    }
+
+    $cmd     = escapeshellarg($python) . ' ' . escapeshellarg($script)
+             . ' --dir ' . escapeshellarg($dir) . ' 2>&1';
+    $output  = [];
+    $retcode = 0;
+    exec($cmd, $output, $retcode);
+
+    return $retcode === 0;
+}

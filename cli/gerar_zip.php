@@ -1,6 +1,6 @@
 <?php
 /**
- * CLI: Gerador manual de ZIP com CSVs agrupados por campo.
+ * CLI: Gerador manual de ZIP com XLSXs agrupados por campo.
  *
  * Uso:
  *   php local/relatorio_treinamentos/cli/gerar_zip.php
@@ -25,7 +25,7 @@ set_time_limit(0);
 
 if ($options['help']) {
     cli_writeln(<<<EOT
-Gerador manual de ZIP — local_relatorio_treinamentos
+Gerador manual de ZIP (XLSX por grupo) — local_relatorio_treinamentos
 
 Uso:
   php local/relatorio_treinamentos/cli/gerar_zip.php [opções]
@@ -109,6 +109,11 @@ if (!is_dir($out_dir)) {
 }
 
 // ── Configuração ──────────────────────────────────────────────────────────────
+$python = local_relatorio_treinamentos_get_python_path();
+if (!$python) {
+    cli_error('Python não configurado. Defina "pathtopython" em mdl_config (Administração → Servidor → Caminhos do sistema).');
+}
+
 $estrategia  = get_config('local_relatorio_treinamentos', 'estrategia') ?: 'view';
 $export_cols = \local_relatorio_treinamentos\helper\columns::get_all();
 $col_keys    = array_keys($export_cols);
@@ -121,9 +126,9 @@ cli_writeln("Estratégia           : {$estrategia}");
 cli_writeln("Arquivo de saída     : {$out_path}");
 echo "\n";
 
-// ── Helper: escreve um CSV de grupo em disco ──────────────────────────────────
-function rt_write_csv(string $filepath, iterable $rows, array $col_keys, array $header_row, string $bom): int {
-    $fh    = fopen($filepath, 'w');
+// ── Helper: escreve grupo como CSV temporário ─────────────────────────────────
+function rt_write_csv(string $csv_path, iterable $rows, array $col_keys, array $header_row, string $bom): int {
+    $fh    = fopen($csv_path, 'w');
     $count = 0;
     fwrite($fh, $bom);
     fputcsv($fh, $header_row, ';');
@@ -168,7 +173,7 @@ if ($estrategia === 'view') {
     foreach ($group_rows as $gr) {
         $gval      = (string)$gr->val;
         $safe_name = rt_safe_name($gval);
-        $temp_csv  = $tempdir . '/' . $safe_name . '.csv';
+        $csv_path  = $tempdir . '/' . $safe_name . '.csv';
         $i++;
 
         // Progresso inline
@@ -188,7 +193,7 @@ if ($estrategia === 'view') {
             "SELECT * FROM {$view} {$where} ORDER BY bas_nome_funcionario, nome_curso",
             $params
         );
-        $n = rt_write_csv($temp_csv, $rs, $col_keys, $header_row, $bom);
+        $n = rt_write_csv($csv_path, $rs, $col_keys, $header_row, $bom);
         $rs->close();
         $total_linhas += $n;
     }
@@ -220,26 +225,34 @@ if ($estrategia === 'view') {
         echo "\r[{$pct}] ({$i}/{$total_grupos}) {$label}" . str_repeat(' ', 20);
 
         $safe_name = rt_safe_name($grupo_val);
-        $temp_csv  = $tempdir . '/' . $safe_name . '.csv';
-        $n = rt_write_csv($temp_csv, $linhas, $col_keys, $header_row, $bom);
+        $csv_path  = $tempdir . '/' . $safe_name . '.csv';
+        $n = rt_write_csv($csv_path, $linhas, $col_keys, $header_row, $bom);
         $total_linhas += $n;
     }
     echo "\n";
 }
 
-// ── Empacota ZIP ──────────────────────────────────────────────────────────────
+// ── Converte todos os CSVs para XLSX em uma única chamada Python ──────────────
 echo "\n";
+cli_writeln("Convertendo para XLSX...");
+if (!local_relatorio_treinamentos_csv_dir_to_xlsx($tempdir)) {
+    array_map('unlink', glob($tempdir . '/*'));
+    rmdir($tempdir);
+    cli_error('Falha ao converter CSVs para XLSX. Verifique Python e dependências.');
+}
+
+// ── Empacota ZIP ──────────────────────────────────────────────────────────────
 cli_writeln("Empacotando ZIP...");
 $zip = new ZipArchive();
 $zip->open($out_path, ZipArchive::CREATE | ZipArchive::OVERWRITE);
-$csv_files = glob($tempdir . '/*.csv');
-foreach ($csv_files as $f) {
+$xlsx_files = glob($tempdir . '/*.xlsx');
+foreach ($xlsx_files as $f) {
     $zip->addFile($f, basename($f));
 }
 $zip->close();
 
 // ── Limpeza ───────────────────────────────────────────────────────────────────
-array_map('unlink', $csv_files);
+array_map('unlink', $xlsx_files);
 rmdir($tempdir);
 
 // ── Resultado ────────────────────────────────────────────────────────────────
@@ -248,6 +261,6 @@ echo "\n";
 cli_writeln("✔ ZIP gerado com sucesso!");
 cli_writeln("  Arquivo  : {$out_path}");
 cli_writeln("  Tamanho  : {$size_kb} KB");
-cli_writeln("  Grupos   : {$total_grupos} arquivos CSV");
+cli_writeln("  Grupos   : {$total_grupos} arquivos XLSX");
 cli_writeln("  Registros: {$total_linhas} linhas no total");
 echo "\n";
