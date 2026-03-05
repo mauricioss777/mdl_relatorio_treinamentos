@@ -8,6 +8,7 @@ if ($hassiteconfig) {
      * Admin setting que renderiza <select multiple> em vez de checkboxes.
      * Armazena como string separada por vírgulas (compatível com configmulticheckbox).
      */
+    if (!class_exists('local_rt_admin_multiselect')) {
     class local_rt_admin_multiselect extends admin_setting_configmulticheckbox {
 
         public function output_html($data, $query = '') {
@@ -55,6 +56,8 @@ if ($hassiteconfig) {
                 : get_string('errorsetting', 'admin');
         }
     }
+
+    } // end if (!class_exists)
 
     // ── Página de settings ────────────────────────────────────────────────────
     $settings = new admin_settingpage(
