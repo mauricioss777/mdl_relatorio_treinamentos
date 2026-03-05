@@ -49,6 +49,28 @@ if ($estrategia === 'direct') {
     $cache              = \cache::make('local_relatorio_treinamentos', 'relatorio');
     $ultima_atualizacao = $cache->get('ultima_atualizacao');
     $filter_options     = $cache->get('filter_options') ?: [];
+
+    // View sem cache (task ainda não rodou): computa filter_options diretamente da view
+    if (empty($filter_options) && $estrategia === 'view') {
+        require_once($CFG->dirroot . '/local/relatorio_treinamentos/locallib.php');
+        $view = local_relatorio_treinamentos_get_view_name();
+        $fkeys = array_keys(\local_relatorio_treinamentos\helper\columns::get_filter_fields());
+        $filter_options = array_fill_keys($fkeys, []);
+        foreach ($fkeys as $field) {
+            if ($field === 'nome_curso') continue;
+            $rows = $DB->get_records_sql(
+                "SELECT DISTINCT $field AS val FROM $view WHERE $field IS NOT NULL AND $field <> '' ORDER BY $field"
+            );
+            foreach ($rows as $row) {
+                $v = (string)$row->val;
+                if ($v !== '') { $filter_options[$field][$v] = $v; }
+            }
+        }
+        $filter_options['nome_curso'] = \local_relatorio_treinamentos\task\atualizar_relatorio::get_cursos_no_filtro($DB);
+        $cache->set('filter_options', $filter_options);
+        $cache->set('ultima_atualizacao', time());
+        $ultima_atualizacao = time();
+    }
 }
 
 $ultima_str = $ultima_atualizacao
@@ -120,9 +142,13 @@ echo $OUTPUT->header();
 }
 /* oculta os dots animados — só mostra o texto "Carregando..." */
 #rt-table_processing > div { display: none; }
-/* ── DataTables: remove ícones de ordenação duplicados nas colunas não ordenadas ── */
-#rt-table thead tr th.sorting::before,
-#rt-table thead tr th.sorting::after {
+/* ── DataTables: remove ícones de ordenação duplicados (conflito com tema Moodle) ── */
+table.dataTable thead > tr > th.sorting::before,
+table.dataTable thead > tr > th.sorting::after,
+table.dataTable thead > tr > th.sorting_asc::before,
+table.dataTable thead > tr > th.sorting_asc::after,
+table.dataTable thead > tr > th.sorting_desc::before,
+table.dataTable thead > tr > th.sorting_desc::after {
     content: '' !important;
 }
 </style>
@@ -241,9 +267,15 @@ echo $OUTPUT->header();
         <button id="rt-col-close" style="background:none;border:none;color:#fff;font-size:18px;cursor:pointer">&times;</button>
     </div>
     <div class="rt-col-panel-actions">
-        <button class="btn btn-outline-secondary btn-sm" id="rt-col-select-all">Marcar todos</button>
-        <button class="btn btn-outline-secondary btn-sm" id="rt-col-select-default">Padrão</button>
-        <button class="btn btn-outline-secondary btn-sm" id="rt-col-unselect-all">Desmarcar</button>
+        <button class="btn btn-outline-secondary btn-sm" id="rt-col-select-all" title="Marcar todos">
+            <i class="fa fa-check-square-o"></i>
+        </button>
+        <button class="btn btn-outline-secondary btn-sm" id="rt-col-select-default" title="Padrão">
+            <i class="fa fa-sliders"></i>
+        </button>
+        <button class="btn btn-outline-secondary btn-sm" id="rt-col-unselect-all" title="Desmarcar">
+            <i class="fa fa-square-o"></i>
+        </button>
     </div>
     <div id="rt-col-panel-body">
         <?php foreach ($column_groups as $group_name => $group_keys): ?>
