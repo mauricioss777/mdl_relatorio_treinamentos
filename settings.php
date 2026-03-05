@@ -69,6 +69,18 @@ if ($hassiteconfig) {
     $default_cols  = \local_relatorio_treinamentos\helper\columns::get_default();
     $default_value = array_fill_keys($default_cols, 1);
 
+    // ── Aviso: Python não configurado ────────────────────────────────────────
+    if (!get_config('core', 'pathtopython') || !is_executable(get_config('core', 'pathtopython'))) {
+        $settings->add(new admin_setting_heading(
+            'local_relatorio_treinamentos/python_warning',
+            '',
+            html_writer::tag('div',
+                get_string('setting_python_warning', 'local_relatorio_treinamentos'),
+                ['class' => 'alert alert-warning']
+            )
+        ));
+    }
+
     // ── 1. Colunas visíveis por padrão ────────────────────────────────────────
     $settings->add(new local_rt_admin_multiselect(
         'local_relatorio_treinamentos/colunas_visiveis',

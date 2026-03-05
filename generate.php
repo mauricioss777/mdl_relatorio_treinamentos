@@ -9,6 +9,7 @@
  */
 require_once(__DIR__ . '/../../config.php');
 require_once(__DIR__ . '/download_helpers.php');
+require_once(__DIR__ . '/locallib.php');
 
 set_time_limit(0);
 ini_set('memory_limit', '-1');
@@ -135,22 +136,46 @@ $token         = bin2hex(random_bytes(16));
 $token_path    = sys_get_temp_dir() . '/rt_tok_' . $token . '.json';
 
 // ═════════════════════════════════════════════════════════════════════════════
-// XLSX
+// XLSX (via Python/pandas)
 // ═════════════════════════════════════════════════════════════════════════════
 if ($formato === 'xlsx') {
-    $sse_flush(['step' => 0, 'total' => 1, 'label' => 'Gerando XLSX...']);
+    if (!local_relatorio_treinamentos_get_python_path()) {
+        $sse_flush(['error' => 'Python não configurado no servidor. Defina "pathtopython" nas configurações do Moodle.']);
+        exit;
+    }
 
+    $sse_flush(['step' => 0, 'total' => 2, 'label' => 'Consultando dados...']);
+
+    $tmp_csv  = sys_get_temp_dir() . '/rt_gen_' . $token . '.csv';
     $out_file = sys_get_temp_dir() . '/rt_gen_' . $token . '.xlsx';
+    $bom      = chr(0xEF) . chr(0xBB) . chr(0xBF);
+
+    // Gera CSV temporário
+    $fh = fopen($tmp_csv, 'w');
+    fwrite($fh, $bom);
+    fputcsv($fh, array_values($export_cols), ';');
 
     if ($estrategia === 'view') {
         $rs = $DB->get_recordset_sql(
             "SELECT * FROM $view $view_where_sql ORDER BY prof_nome_filial, bas_nome_funcionario, nome_curso",
             $view_params
         );
-        rt_xlsx_stream($export_cols, $rs, $out_file, 'Relatório', $concluido_idx);
+        foreach ($rs as $row) {
+            fputcsv($fh, rt_get_row_values($row, $export_cols), ';');
+        }
         $rs->close();
     } else {
-        rt_xlsx_stream($export_cols, $dados, $out_file, 'Relatório', $concluido_idx);
+        foreach ($dados as $row) {
+            fputcsv($fh, rt_get_row_values($row, $export_cols), ';');
+        }
+    }
+    fclose($fh);
+
+    $sse_flush(['step' => 1, 'total' => 2, 'label' => 'Convertendo para XLSX...']);
+
+    if (!local_relatorio_treinamentos_csv_to_xlsx($tmp_csv, $out_file)) {
+        $sse_flush(['error' => 'Falha ao converter CSV para XLSX. Verifique o Python e as dependências.']);
+        exit;
     }
 
     $filename = $filename_base . '.xlsx';

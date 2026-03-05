@@ -436,8 +436,10 @@ function initRT(\$) {
     var visibleCols = savedCols || defaultVisible.slice();
 
     function applyColVisibility(keys) {
+        var last = columnKeys.length - 1;
         columnKeys.forEach(function(key, idx) {
-            table.column(idx).visible(keys.indexOf(key) !== -1);
+            // false = não recalcular/redesenhar a cada coluna; true só no último
+            table.column(idx).visible(keys.indexOf(key) !== -1, idx === last);
         });
         document.querySelectorAll('.rt-col-toggle-cb').forEach(function(cb) {
             cb.checked = keys.indexOf(cb.dataset.colKey) !== -1;
@@ -446,7 +448,11 @@ function initRT(\$) {
     function saveAndApply(keys) {
         visibleCols = keys;
         try { localStorage.setItem(LS_KEY, JSON.stringify(keys)); } catch(e) {}
-        applyColVisibility(keys);
+        rtShowOverlay('Atualizando colunas...');
+        setTimeout(function() {
+            applyColVisibility(keys);
+            rtHideOverlay();
+        }, 0);
     }
     applyColVisibility(visibleCols);
 

@@ -260,3 +260,44 @@ function local_relatorio_treinamentos_get_report_sql() {
         ORDER BY prof_nome_filial, bas_nome_funcionario, nome_curso
     RTSQL;
 }
+
+/**
+ * Retorna o caminho do executável Python configurado em mdl_config (pathtopython).
+ * Valida que o arquivo existe e é executável.
+ *
+ * @return string|false  Caminho absoluto do Python ou false se não configurado/inválido.
+ */
+function local_relatorio_treinamentos_get_python_path() {
+    $path = get_config('core', 'pathtopython');
+    if (!$path || !is_executable($path)) {
+        return false;
+    }
+    return $path;
+}
+
+/**
+ * Converte um CSV (sep=';', UTF-8 BOM) para XLSX usando Python/pandas.
+ * Remove o CSV de entrada após a conversão.
+ *
+ * @param string $csv_path   Caminho do CSV de entrada (será deletado).
+ * @param string $xlsx_path  Caminho de saída do XLSX.
+ * @return bool  true em sucesso, false em falha.
+ */
+function local_relatorio_treinamentos_csv_to_xlsx(string $csv_path, string $xlsx_path): bool {
+    $python = local_relatorio_treinamentos_get_python_path();
+    $script = __DIR__ . '/cli/csv_to_xlsx.py';
+
+    if (!$python || !file_exists($script)) {
+        return false;
+    }
+
+    $cmd    = escapeshellarg($python) . ' ' . escapeshellarg($script) . ' '
+            . escapeshellarg($csv_path) . ' ' . escapeshellarg($xlsx_path) . ' 2>&1';
+    $output  = [];
+    $retcode = 0;
+    exec($cmd, $output, $retcode);
+
+    @unlink($csv_path);
+
+    return $retcode === 0 && file_exists($xlsx_path);
+}
