@@ -25,28 +25,18 @@ cli_writeln('');
 
 $inicio = microtime(true);
 
-if ($estrategia === 'view') {
-    cli_writeln('Atualizando view materializada...');
-    try {
-        local_relatorio_treinamentos_refresh_matview($DB);
-        $view = local_relatorio_treinamentos_get_view_name();
-        $count = $DB->count_records_sql("SELECT COUNT(*) FROM {$view}");
-        $elapsed = round(microtime(true) - $inicio, 2);
-        cli_writeln("Concluído em {$elapsed}s — {$count} registros na view.");
-    } catch (Exception $e) {
-        cli_error('Erro ao atualizar view: ' . $e->getMessage());
-    }
-
-} elseif ($estrategia === 'cache') {
-    cli_writeln('Executando task de atualização do cache...');
+if ($estrategia === 'view' || $estrategia === 'cache') {
+    $label = $estrategia === 'view' ? 'view materializada e cache' : 'cache';
+    cli_writeln("Atualizando {$label}...");
     $task = new \local_relatorio_treinamentos\task\atualizar_relatorio();
     $task->execute();
     $elapsed = round(microtime(true) - $inicio, 2);
 
     $cache = \cache::make('local_relatorio_treinamentos', 'relatorio');
-    $dados = $cache->get('dados');
-    $count = is_array($dados) ? count($dados) : 0;
-    cli_writeln("Concluído em {$elapsed}s — {$count} registros no cache.");
+    $ultima = $cache->get('ultima_atualizacao');
+    $cursos = $cache->get('filter_options');
+    $curso_count = is_array($cursos) && isset($cursos['nome_curso']) ? count($cursos['nome_curso']) : 0;
+    cli_writeln("Concluído em {$elapsed}s — ultima_atualizacao={$ultima}, {$curso_count} cursos no filtro.");
 
 } else {
     // direct: não há nada para pré-calcular; apenas valida a query
