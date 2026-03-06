@@ -22,11 +22,14 @@ if ($is_gestor && !$is_admin && !$is_moodle_manager) {
     if ($filtros_saved === false || $filtros_saved === '') {
         $filtros_saved = get_config('local_relatorio_treinamentos', 'filtros_visiveis');
     }
+    // Gestores podem usar qualquer coluna como filtro, não apenas os 7 campos padrão
+    $filter_base = \local_relatorio_treinamentos\helper\columns::get_all();
 } else {
     $filtros_saved = get_config('local_relatorio_treinamentos', 'filtros_visiveis');
+    $filter_base = $all_filter_fields;
 }
 $filter_fields = ($filtros_saved !== false && $filtros_saved !== '')
-    ? array_intersect_key($all_filter_fields, array_flip(explode(',', $filtros_saved)))
+    ? array_intersect_key($filter_base, array_flip(explode(',', $filtros_saved)))
     : $all_filter_fields;
 
 // ── Page setup ────────────────────────────────────────────────────────────────
@@ -86,6 +89,23 @@ if ($estrategia === 'direct') {
 $ultima_str = $ultima_atualizacao
     ? userdate($ultima_atualizacao, get_string('strftimedatetimeshort', 'langconfig'))
     : 'N/A';
+
+// ── Populate filter_options para campos extras (ex: gestores com colunas não padrão) ─
+if ($estrategia === 'view') {
+    require_once($CFG->dirroot . '/local/relatorio_treinamentos/locallib.php');
+    $view = local_relatorio_treinamentos_get_view_name();
+    foreach (array_keys($filter_fields) as $ef) {
+        if (isset($filter_options[$ef]) || $ef === 'nome_curso') continue;
+        $rows = $DB->get_records_sql(
+            "SELECT DISTINCT $ef AS val FROM $view WHERE $ef IS NOT NULL AND $ef <> '' ORDER BY $ef LIMIT 2000"
+        );
+        $filter_options[$ef] = [];
+        foreach ($rows as $row) {
+            $v = (string)$row->val;
+            if ($v !== '') $filter_options[$ef][$v] = $v;
+        }
+    }
+}
 
 // ── Definições de colunas ─────────────────────────────────────────────────────
 $all_columns      = \local_relatorio_treinamentos\helper\columns::get_all();
