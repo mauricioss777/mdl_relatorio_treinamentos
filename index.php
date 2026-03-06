@@ -102,6 +102,20 @@ if ($estrategia === 'view' && $is_gestor && !$is_admin && !$is_moodle_manager) {
         // Campos padrão já estão no cache; nome_curso tem tratamento próprio
         if (in_array($ef, $standard_fields) || $ef === 'nome_curso') continue;
         // Sempre sobrescreve (ignora cache) para garantir escopo correto do gestor
+        if ($ef === 'bas_nome_funcionario') {
+            // Exibe nome mas filtra por userid (garante unicidade)
+            $rows = $DB->get_records_sql(
+                "SELECT DISTINCT userid, bas_nome_funcionario AS nome FROM $view
+                  WHERE bas_nome_funcionario IS NOT NULL AND bas_nome_funcionario <> '' AND gestor = :ef_gestor
+                  ORDER BY bas_nome_funcionario LIMIT 2000",
+                $ef_params
+            );
+            $filter_options[$ef] = [];
+            foreach ($rows as $row) {
+                $filter_options[$ef][(string)$row->userid] = $row->nome;
+            }
+            continue;
+        }
         $rows = $DB->get_records_sql(
             "SELECT DISTINCT $ef AS val FROM $view
               WHERE $ef IS NOT NULL AND $ef <> '' AND gestor = :ef_gestor
@@ -313,8 +327,8 @@ table.dataTable thead > tr > th.sorting_desc::after {
                                 class="form-control form-control-sm rt-filter-select"
                                 data-filter-field="<?php echo $field; ?>">
                             <option value="">— Todos —</option>
-                            <?php foreach ($filter_options[$field] ?? [] as $opt): ?>
-                                <option value="<?php echo s($opt); ?>"><?php echo s($opt); ?></option>
+                            <?php foreach ($filter_options[$field] ?? [] as $fkey => $fopt): ?>
+                                <option value="<?php echo s($fkey); ?>"><?php echo s($fopt); ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>

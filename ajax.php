@@ -52,6 +52,10 @@ if (!is_array($filters)) {
 // ── Colunas disponíveis (whitelist para SQL injection prevention) ─────────────
 $all_columns  = \local_relatorio_treinamentos\helper\columns::get_all();
 $column_keys  = array_keys($all_columns);
+
+// Campos cujo valor enviado pelo filtro corresponde a outra coluna na view
+// (ex: bas_nome_funcionario exibe o nome mas envia userid como valor)
+$filter_field_aliases = ['bas_nome_funcionario' => 'userid'];
 $estrategia   = get_config('local_relatorio_treinamentos', 'estrategia') ?: 'direct';
 
 // ── Cursos com flag rt_incluir_filtro (filtro implícito de visualização) ──────
@@ -82,9 +86,10 @@ if ($estrategia === 'view') {
     foreach ($filters as $field => $value) {
         $value = trim((string)$value);
         $field = clean_param($field, PARAM_ALPHANUMEXT);
-        if ($value === '' || !in_array($field, $column_keys)) continue;
+        $actual_field = $filter_field_aliases[$field] ?? $field;
+        if ($value === '' || !in_array($actual_field, $column_keys)) continue;
         $pname = 'wf' . $pcount++;
-        $where_parts[] = "$field = :$pname";
+        $where_parts[] = "$actual_field = :$pname";
         $sql_params[$pname] = $value;
     }
 
@@ -207,8 +212,9 @@ foreach ($filters as $field => $value) {
     $value = trim((string)$value);
     if ($value === '') { continue; }
     $field = clean_param($field, PARAM_ALPHANUMEXT);
-    $dados = array_values(array_filter($dados, function($row) use ($field, $value) {
-        return (string)($row->$field ?? '') === $value;
+    $actual_field = $filter_field_aliases[$field] ?? $field;
+    $dados = array_values(array_filter($dados, function($row) use ($actual_field, $value) {
+        return (string)($row->$actual_field ?? '') === $value;
     }));
 }
 
