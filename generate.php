@@ -44,6 +44,10 @@ $active_filters = $filters_raw  ? json_decode($filters_raw, true)  : [];
 if (!is_array($selected_cols))  $selected_cols  = null;
 if (!is_array($active_filters)) $active_filters = [];
 
+require_once(__DIR__ . '/locallib.php');
+$cursos_filtro_implicito = local_relatorio_treinamentos_get_nomes_cursos_filtro();
+$aplicar_filtro_cursos   = !empty($cursos_filtro_implicito) && !isset($active_filters['nome_curso']);
+
 $estrategia  = get_config('local_relatorio_treinamentos', 'estrategia') ?: 'direct';
 $all_columns = \local_relatorio_treinamentos\helper\columns::get_all();
 
@@ -93,6 +97,11 @@ if ($estrategia === 'view') {
         $where_parts[]       = "$field = :$pname";
         $view_params[$pname] = $value;
     }
+    if ($aplicar_filtro_cursos) {
+        [$in_sql, $in_params] = $DB->get_in_or_equal($cursos_filtro_implicito, SQL_PARAMS_NAMED, 'gcf');
+        $where_parts[]  = "nome_curso $in_sql";
+        $view_params    = array_merge($view_params, $in_params);
+    }
     $view_where_sql = $where_parts ? 'WHERE ' . implode(' AND ', $where_parts) : '';
 }
 
@@ -125,6 +134,12 @@ if ($estrategia !== 'view') {
                 if (($row->$field ?? '') !== $value) return false;
             }
             return true;
+        }));
+    }
+    if ($aplicar_filtro_cursos) {
+        $cursos_set = array_flip($cursos_filtro_implicito);
+        $dados = array_values(array_filter($dados, function($row) use ($cursos_set) {
+            return isset($cursos_set[trim((string)($row->nome_curso ?? ''))]);
         }));
     }
 }
