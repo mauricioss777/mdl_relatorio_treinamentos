@@ -94,10 +94,18 @@ $ultima_str = $ultima_atualizacao
 if ($estrategia === 'view') {
     require_once($CFG->dirroot . '/local/relatorio_treinamentos/locallib.php');
     $view = local_relatorio_treinamentos_get_view_name();
+    // Quando gestor, restringir opções apenas aos seus colaboradores
+    $ef_extra_where  = '';
+    $ef_extra_params = [];
+    if ($is_gestor && !$is_admin && !$is_moodle_manager) {
+        $ef_extra_where            = "AND gestor = :ef_gestor_nome";
+        $ef_extra_params['ef_gestor_nome'] = fullname($USER);
+    }
     foreach (array_keys($filter_fields) as $ef) {
         if (isset($filter_options[$ef]) || $ef === 'nome_curso') continue;
         $rows = $DB->get_records_sql(
-            "SELECT DISTINCT $ef AS val FROM $view WHERE $ef IS NOT NULL AND $ef <> '' ORDER BY $ef LIMIT 2000"
+            "SELECT DISTINCT $ef AS val FROM $view WHERE $ef IS NOT NULL AND $ef <> '' $ef_extra_where ORDER BY $ef LIMIT 2000",
+            $ef_extra_params
         );
         $filter_options[$ef] = [];
         foreach ($rows as $row) {
