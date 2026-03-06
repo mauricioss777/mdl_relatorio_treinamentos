@@ -15,6 +15,20 @@ if (!$is_admin && !$is_moodle_manager && !$is_gestor) {
     throw new moodle_exception('noaccess', 'local_relatorio_treinamentos');
 }
 
+// ── Filtros visíveis (definido cedo pois é usado no bloco de estratégia) ─────
+$all_filter_fields = \local_relatorio_treinamentos\helper\columns::get_filter_fields();
+if ($is_gestor && !$is_admin && !$is_moodle_manager) {
+    $filtros_saved = get_config('local_relatorio_treinamentos', 'filtros_visiveis_gestor');
+    if ($filtros_saved === false || $filtros_saved === '') {
+        $filtros_saved = get_config('local_relatorio_treinamentos', 'filtros_visiveis');
+    }
+} else {
+    $filtros_saved = get_config('local_relatorio_treinamentos', 'filtros_visiveis');
+}
+$filter_fields = ($filtros_saved !== false && $filtros_saved !== '')
+    ? array_intersect_key($all_filter_fields, array_flip(explode(',', $filtros_saved)))
+    : $all_filter_fields;
+
 // ── Page setup ────────────────────────────────────────────────────────────────
 $PAGE->set_context($context);
 $PAGE->set_url(new moodle_url('/local/relatorio_treinamentos/index.php'));
@@ -76,21 +90,6 @@ $ultima_str = $ultima_atualizacao
 // ── Definições de colunas ─────────────────────────────────────────────────────
 $all_columns      = \local_relatorio_treinamentos\helper\columns::get_all();
 $column_groups    = \local_relatorio_treinamentos\helper\columns::get_groups();
-// Filtros: usa setting de gestor se aplicável, senão a setting geral do admin
-$all_filter_fields = \local_relatorio_treinamentos\helper\columns::get_filter_fields();
-if ($is_gestor && !$is_admin && !$is_moodle_manager) {
-    $filtros_saved = get_config('local_relatorio_treinamentos', 'filtros_visiveis_gestor');
-    // Fallback para filtros_visiveis se gestor não tiver configuração própria
-    if ($filtros_saved === false || $filtros_saved === '') {
-        $filtros_saved = get_config('local_relatorio_treinamentos', 'filtros_visiveis');
-    }
-} else {
-    $filtros_saved = get_config('local_relatorio_treinamentos', 'filtros_visiveis');
-}
-$filter_fields = ($filtros_saved !== false && $filtros_saved !== '')
-    ? array_intersect_key($all_filter_fields, array_flip(explode(',', $filtros_saved)))
-    : $all_filter_fields;
-
 // Agrupamentos ZIP: usa setting do admin; se não configurado, usa todos disponíveis
 $all_zip_fields   = \local_relatorio_treinamentos\helper\columns::get_zip_group_fields();
 $zip_saved        = get_config('local_relatorio_treinamentos', 'agrupamentos_zip');
