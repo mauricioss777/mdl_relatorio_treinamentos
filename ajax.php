@@ -58,6 +58,14 @@ $all_columns  = \local_relatorio_treinamentos\helper\columns::get_all();
 $column_keys  = array_keys($all_columns);
 $estrategia   = get_config('local_relatorio_treinamentos', 'estrategia') ?: 'direct';
 
+// ── Cursos com flag rt_incluir_filtro (filtro implícito de visualização) ──────
+// Quando o usuário não seleciona nenhum curso no filtro, a visualização mostra
+// apenas os cursos marcados com rt_incluir_filtro=1. Os dados na view/cache
+// permanecem completos (sem filtro de cursos) para que o export funcione.
+require_once($CFG->dirroot . '/local/relatorio_treinamentos/locallib.php');
+$cursos_filtro_implicito = local_relatorio_treinamentos_get_nomes_cursos_filtro();
+$aplicar_filtro_cursos   = !empty($cursos_filtro_implicito) && !isset($filters['nome_curso']);
+
 // ══════════════════════════════════════════════════════════════════════════════
 // ESTRATÉGIA: view materializada — paginação SQL real (mais eficiente)
 // ══════════════════════════════════════════════════════════════════════════════
@@ -95,16 +103,28 @@ if ($estrategia === 'view') {
         $where_parts[] = '(' . implode(' OR ', $search_parts) . ')';
     }
 
+    if ($aplicar_filtro_cursos) {
+        [$in_sql, $in_params] = $DB->get_in_or_equal($cursos_filtro_implicito, SQL_PARAMS_NAMED, 'wcf');
+        $where_parts[] = "nome_curso $in_sql";
+        $sql_params    = array_merge($sql_params, $in_params);
+    }
+
     $where_sql = $where_parts ? 'WHERE ' . implode(' AND ', $where_parts) : '';
 
     // ── Contagens ─────────────────────────────────────────────────────────────
-    $access_where  = '';
-    $access_params = [];
+    $total_where_parts = [];
+    $total_params      = [];
     if (!$is_admin && !$is_moodle_manager && $is_gestor) {
-        $access_where  = 'WHERE gestor = :agestor';
-        $access_params['agestor'] = fullname($USER);
+        $total_where_parts[] = 'gestor = :agestor';
+        $total_params['agestor'] = fullname($USER);
     }
-    $records_total    = (int)$DB->count_records_sql("SELECT COUNT(*) FROM $view $access_where", $access_params);
+    if ($aplicar_filtro_cursos) {
+        [$in_sql_t, $in_params_t] = $DB->get_in_or_equal($cursos_filtro_implicito, SQL_PARAMS_NAMED, 'wcft');
+        $total_where_parts[] = "nome_curso $in_sql_t";
+        $total_params        = array_merge($total_params, $in_params_t);
+    }
+    $total_where_sql  = $total_where_parts ? 'WHERE ' . implode(' AND ', $total_where_parts) : '';
+    $records_total    = (int)$DB->count_records_sql("SELECT COUNT(*) FROM $view $total_where_sql", $total_params);
     $records_filtered = (int)$DB->count_records_sql("SELECT COUNT(*) FROM $view $where_sql", $sql_params);
 
     // ── Ordenação (whitelist) ─────────────────────────────────────────────────
@@ -172,6 +192,15 @@ if (!$is_admin && !$is_moodle_manager && $is_gestor) {
     $gestor_nome = fullname($USER);
     $dados = array_values(array_filter($dados, function($row) use ($gestor_nome) {
         return ($row->gestor ?? '') === $gestor_nome;
+    }));
+}
+
+// Filtro implícito: mostrar apenas cursos com rt_incluir_filtro quando não
+// há filtro ativo de nome_curso — os dados no cache/view continuam completos.
+if ($aplicar_filtro_cursos) {
+    $cursos_set = array_flip($cursos_filtro_implicito);
+    $dados = array_values(array_filter($dados, function($row) use ($cursos_set) {
+        return isset($cursos_set[trim((string)($row->nome_curso ?? ''))]);
     }));
 }
 

@@ -327,3 +327,25 @@ function local_relatorio_treinamentos_csv_dir_to_xlsx(string $dir): bool {
 
     return $retcode === 0;
 }
+
+/**
+ * Retorna array com os fullnames dos cursos que têm a flag rt_incluir_filtro=1.
+ * Usado para aplicar filtro implícito na visualização do relatório.
+ *
+ * @return string[]  Lista de fullnames de cursos com a flag ativa.
+ */
+function local_relatorio_treinamentos_get_nomes_cursos_filtro() {
+    global $DB;
+    $sql = "SELECT DISTINCT c.fullname
+            FROM {course} c
+            JOIN {customfield_data} d  ON d.instanceid = c.id
+            JOIN {customfield_field} f ON f.id = d.fieldid
+            WHERE f.shortname = 'rt_incluir_filtro'
+              AND d.value = '1'
+              AND c.visible = 1
+            ORDER BY c.fullname";
+    $rows = $DB->get_records_sql($sql);
+    return array_values(array_filter(array_map(function($r) {
+        return trim($r->fullname);
+    }, $rows)));
+}
