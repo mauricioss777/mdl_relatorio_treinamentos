@@ -87,7 +87,8 @@ if ($estrategia === 'view') {
         $value = trim((string)$value);
         $field = clean_param($field, PARAM_ALPHANUMEXT);
         $actual_field = $filter_field_aliases[$field] ?? $field;
-        if ($value === '' || !in_array($actual_field, $column_keys)) continue;
+        $allowed_cols = array_merge($column_keys, array_values($filter_field_aliases));
+        if ($value === '' || !in_array($actual_field, $allowed_cols)) continue;
         $pname = 'wf' . $pcount++;
         $where_parts[] = "$actual_field = :$pname";
         $sql_params[$pname] = $value;
@@ -213,6 +214,8 @@ foreach ($filters as $field => $value) {
     if ($value === '') { continue; }
     $field = clean_param($field, PARAM_ALPHANUMEXT);
     $actual_field = $filter_field_aliases[$field] ?? $field;
+    $allowed_cols = array_merge($column_keys, array_values($filter_field_aliases));
+    if (!in_array($actual_field, $allowed_cols)) { continue; }
     $dados = array_values(array_filter($dados, function($row) use ($actual_field, $value) {
         return (string)($row->$actual_field ?? '') === $value;
     }));
