@@ -349,3 +349,46 @@ function local_relatorio_treinamentos_get_nomes_cursos_filtro() {
         return trim($r->fullname);
     }, $rows)));
 }
+
+/**
+ * Verifica se um usuário é considerado "gestor" com base nas configurações do plugin.
+ *
+ * Lê as settings gestor_campo_perfil (shortname do campo de perfil) e
+ * gestor_campo_valores (lista de valores separados por vírgula).
+ * Se não configurado, usa o comportamento legado (fieldid=18, códigos hardcoded).
+ *
+ * @param stdClass $user  Objeto do usuário (precisa ter ->id).
+ * @return bool
+ */
+function local_relatorio_treinamentos_is_gestor($user) {
+    global $DB;
+
+    $campo_shortname = get_config('local_relatorio_treinamentos', 'gestor_campo_perfil');
+    $campo_valores   = get_config('local_relatorio_treinamentos', 'gestor_campo_valores');
+
+    // Fallback legado se não configurado
+    if (empty($campo_shortname) || $campo_shortname === '0') {
+        $cargo = $DB->get_field('user_info_data', 'data', [
+            'userid'  => $user->id,
+            'fieldid' => 18,
+        ]);
+        $manager_codes = \local_relatorio_treinamentos\helper\columns::get_manager_cargo_codes();
+        return in_array(trim((string)$cargo), $manager_codes);
+    }
+
+    // Busca o fieldid pelo shortname configurado
+    $fieldid = $DB->get_field('user_info_field', 'id', ['shortname' => $campo_shortname]);
+    if (!$fieldid) {
+        return false;
+    }
+
+    $valor = $DB->get_field('user_info_data', 'data', [
+        'userid'  => $user->id,
+        'fieldid' => $fieldid,
+    ]);
+
+    $valores_permitidos = array_map('trim', explode(',', (string)$campo_valores));
+    $valores_permitidos = array_filter($valores_permitidos);
+
+    return in_array(trim((string)$valor), $valores_permitidos);
+}
