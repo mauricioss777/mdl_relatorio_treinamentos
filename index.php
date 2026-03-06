@@ -90,22 +90,23 @@ $ultima_str = $ultima_atualizacao
     ? userdate($ultima_atualizacao, get_string('strftimedatetimeshort', 'langconfig'))
     : 'N/A';
 
-// ── Populate filter_options para campos extras (ex: gestores com colunas não padrão) ─
-if ($estrategia === 'view') {
+// ── Populate filter_options para campos extras de gestor (sempre frescos, sem cache) ─
+// Campos não-padrão configurados para gestores nunca vêm do cache (que é global),
+// pois as opções devem ser restritas aos colaboradores do próprio gestor.
+if ($estrategia === 'view' && $is_gestor && !$is_admin && !$is_moodle_manager) {
     require_once($CFG->dirroot . '/local/relatorio_treinamentos/locallib.php');
     $view = local_relatorio_treinamentos_get_view_name();
-    // Quando gestor, restringir opções apenas aos seus colaboradores
-    $ef_extra_where  = '';
-    $ef_extra_params = [];
-    if ($is_gestor && !$is_admin && !$is_moodle_manager) {
-        $ef_extra_where            = "AND gestor = :ef_gestor_nome";
-        $ef_extra_params['ef_gestor_nome'] = fullname($USER);
-    }
+    $standard_fields = array_keys(\local_relatorio_treinamentos\helper\columns::get_filter_fields());
+    $ef_params = ['ef_gestor' => fullname($USER)];
     foreach (array_keys($filter_fields) as $ef) {
-        if (isset($filter_options[$ef]) || $ef === 'nome_curso') continue;
+        // Campos padrão já estão no cache; nome_curso tem tratamento próprio
+        if (in_array($ef, $standard_fields) || $ef === 'nome_curso') continue;
+        // Sempre sobrescreve (ignora cache) para garantir escopo correto do gestor
         $rows = $DB->get_records_sql(
-            "SELECT DISTINCT $ef AS val FROM $view WHERE $ef IS NOT NULL AND $ef <> '' $ef_extra_where ORDER BY $ef LIMIT 2000",
-            $ef_extra_params
+            "SELECT DISTINCT $ef AS val FROM $view
+              WHERE $ef IS NOT NULL AND $ef <> '' AND gestor = :ef_gestor
+              ORDER BY $ef LIMIT 2000",
+            $ef_params
         );
         $filter_options[$ef] = [];
         foreach ($rows as $row) {
