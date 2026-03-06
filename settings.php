@@ -132,5 +132,52 @@ if ($hassiteconfig) {
         array_map('htmlspecialchars_decode', $all_columns)
     ));
 
+
+    // ── 5. Configurações de Gestores ─────────────────────────────────────────
+    $settings->add(new admin_setting_heading(
+        'local_relatorio_treinamentos/gestor_heading',
+        'Configurações de Gestores',
+        'Define como o sistema identifica usuários gestores e quais filtros eles podem usar.'
+    ));
+
+    // Campo de perfil de usuário que identifica gestores
+    $user_profile_fields_raw = $DB->get_records('user_info_field', [], 'sortorder', 'id, shortname, name');
+    $campo_options = ['0' => '(usar padrão: código de cargo, fieldid=18)'];
+    foreach ($user_profile_fields_raw as $upf) {
+        $campo_options[$upf->shortname] = $upf->name . ' [' . $upf->shortname . ']';
+    }
+
+    $settings->add(new admin_setting_configselect(
+        'local_relatorio_treinamentos/gestor_campo_perfil',
+        'Campo de perfil que identifica gestores',
+        'Selecione qual campo de perfil de usuário determina se o usuário é um gestor. '
+        . 'Se não selecionado, usa o comportamento padrão (campo de código de cargo, fieldid=18).',
+        '0',
+        $campo_options
+    ));
+
+    // Valores que o campo deve ter para o usuário ser considerado gestor
+    $settings->add(new admin_setting_configtext(
+        'local_relatorio_treinamentos/gestor_campo_valores',
+        'Valores que identificam gestores',
+        'Informe os valores separados por vírgula que o campo selecionado deve ter para que o usuário seja considerado um gestor. '
+        . 'Exemplo: <code>011,045,050,062</code>. Espaços em torno das vírgulas são ignorados.',
+        '011,045,050,062',
+        PARAM_TEXT,
+        40
+    ));
+
+    // Filtros disponíveis para gestores
+    $default_filter_gestor_keys = array_keys(\local_relatorio_treinamentos\helper\columns::get_filter_fields());
+    $default_filter_gestor_val  = array_fill_keys($default_filter_gestor_keys, 1);
+
+    $settings->add(new local_rt_admin_multiselect(
+        'local_relatorio_treinamentos/filtros_visiveis_gestor',
+        get_string('setting_filtros_visiveis_gestor', 'local_relatorio_treinamentos'),
+        get_string('setting_filtros_visiveis_gestor_desc', 'local_relatorio_treinamentos'),
+        $default_filter_gestor_val,
+        array_map('htmlspecialchars_decode', $all_columns)
+    ));
+
     $ADMIN->add('localplugins', $settings);
 }

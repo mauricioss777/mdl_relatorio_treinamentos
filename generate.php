@@ -21,12 +21,8 @@ $context           = context_system::instance();
 $is_admin          = is_siteadmin();
 $is_moodle_manager = has_capability('local/relatorio_treinamentos:view', $context);
 
-$cargo = $DB->get_field('user_info_data', 'data', [
-    'userid'  => $USER->id,
-    'fieldid' => 18,
-]);
-$manager_codes = \local_relatorio_treinamentos\helper\columns::get_manager_cargo_codes();
-$is_gestor     = in_array(trim((string)$cargo), $manager_codes);
+require_once($CFG->dirroot . '/local/relatorio_treinamentos/locallib.php');
+$is_gestor = local_relatorio_treinamentos_is_gestor($USER);
 
 if (!$is_admin && !$is_moodle_manager && !$is_gestor) {
     http_response_code(403);

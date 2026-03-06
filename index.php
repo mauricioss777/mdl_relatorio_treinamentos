@@ -8,12 +8,8 @@ $context           = context_system::instance();
 $is_admin          = is_siteadmin();
 $is_moodle_manager = has_capability('local/relatorio_treinamentos:view', $context);
 
-$cargo = $DB->get_field('user_info_data', 'data', [
-    'userid'  => $USER->id,
-    'fieldid' => 18,
-]);
-$manager_codes = \local_relatorio_treinamentos\helper\columns::get_manager_cargo_codes();
-$is_gestor     = in_array(trim((string)$cargo), $manager_codes);
+require_once($CFG->dirroot . '/local/relatorio_treinamentos/locallib.php');
+$is_gestor = local_relatorio_treinamentos_is_gestor($USER);
 
 if (!$is_admin && !$is_moodle_manager && !$is_gestor) {
     throw new moodle_exception('noaccess', 'local_relatorio_treinamentos');
@@ -80,10 +76,18 @@ $ultima_str = $ultima_atualizacao
 // ── Definições de colunas ─────────────────────────────────────────────────────
 $all_columns      = \local_relatorio_treinamentos\helper\columns::get_all();
 $column_groups    = \local_relatorio_treinamentos\helper\columns::get_groups();
-// Filtros: usa setting do admin; se não configurado, usa todos disponíveis
+// Filtros: usa setting de gestor se aplicável, senão a setting geral do admin
 $all_filter_fields = \local_relatorio_treinamentos\helper\columns::get_filter_fields();
-$filtros_saved     = get_config('local_relatorio_treinamentos', 'filtros_visiveis');
-$filter_fields     = ($filtros_saved !== false && $filtros_saved !== '')
+if ($is_gestor && !$is_admin && !$is_moodle_manager) {
+    $filtros_saved = get_config('local_relatorio_treinamentos', 'filtros_visiveis_gestor');
+    // Fallback para filtros_visiveis se gestor não tiver configuração própria
+    if ($filtros_saved === false || $filtros_saved === '') {
+        $filtros_saved = get_config('local_relatorio_treinamentos', 'filtros_visiveis');
+    }
+} else {
+    $filtros_saved = get_config('local_relatorio_treinamentos', 'filtros_visiveis');
+}
+$filter_fields = ($filtros_saved !== false && $filtros_saved !== '')
     ? array_intersect_key($all_filter_fields, array_flip(explode(',', $filtros_saved)))
     : $all_filter_fields;
 
