@@ -11,4 +11,8 @@ $string['setting_agrupamentos_zip']        = 'Agrupamentos disponíveis no downl
 $string['setting_agrupamentos_zip_desc']   = 'Selecione quais campos estarão disponíveis como opções de agrupamento no download ZIP do relatório.';
 $string['setting_filtros_visiveis_gestor']      = 'Filtros disponíveis para gestores';
 $string['setting_filtros_visiveis_gestor_desc'] = 'Selecione quais campos de filtro serão exibidos para usuários identificados como gestores. Se não configurado, usa os mesmos filtros do setting geral.';
+$string['setting_downloads_visiveis']             = 'Downloads disponíveis (Admins/Managers)';
+$string['setting_downloads_visiveis_desc']        = 'Selecione quais opções de download estarão disponíveis na tela do relatório para administradores e managers.';
+$string['setting_downloads_visiveis_gestor']      = 'Downloads disponíveis (Gestores)';
+$string['setting_downloads_visiveis_gestor_desc'] = 'Selecione quais opções de download estarão disponíveis na tela do relatório para usuários identificados como gestores.';
 $string['setting_python_warning'] = 'Python 3 não está configurado neste servidor. A exportação XLSX ficará indisponível até que <code>pathtopython</code> seja definido em <a href="/admin/settings.php?section=systempaths">Administração > Servidor > Caminhos do sistema</a> e o Python esteja instalado com as dependências <code>pandas</code> e <code>openpyxl</code>.';

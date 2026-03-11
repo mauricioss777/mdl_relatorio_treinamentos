@@ -11,6 +11,18 @@ $is_moodle_manager = has_capability('local/relatorio_treinamentos:view', $contex
 require_once($CFG->dirroot . '/local/relatorio_treinamentos/locallib.php');
 $is_gestor = local_relatorio_treinamentos_is_gestor($USER);
 
+// ── Downloads visíveis ───────────────────────────────────────────────────────
+$_dl_key     = ($is_gestor && !$is_admin && !$is_moodle_manager) ? 'downloads_visiveis_gestor' : 'downloads_visiveis';
+$_dl_saved   = get_config('local_relatorio_treinamentos', $_dl_key);
+$_dl_enabled = ($_dl_saved !== false && $_dl_saved !== '')
+    ? array_flip(explode(',', $_dl_saved))
+    : ['xlsx' => 1, 'csv' => 1, 'zip' => 1, 'template' => 1];
+$show_dl_xlsx     = isset($_dl_enabled['xlsx']);
+$show_dl_csv      = isset($_dl_enabled['csv']);
+$show_dl_zip      = isset($_dl_enabled['zip']);
+$show_dl_template = isset($_dl_enabled['template']);
+$show_dl_any      = $show_dl_xlsx || $show_dl_csv || $show_dl_zip || $show_dl_template;
+
 if (!$is_admin && !$is_moodle_manager && !$is_gestor) {
     throw new moodle_exception('noaccess', 'local_relatorio_treinamentos');
 }
@@ -306,10 +318,12 @@ table.dataTable thead > tr > th.sorting_desc::after {
             <?php endif; ?>
         </small>
         <div>
+            <?php if ($show_dl_any): ?>
             <button class="btn btn-sm btn-outline-secondary" type="button"
                     data-bs-toggle="collapse" data-bs-target="#rt-download-panel">
                 <i class="fa fa-download"></i> Downloads
             </button>
+            <?php endif; ?>
             <button class="btn btn-sm btn-outline-secondary ml-1" type="button"
                     data-bs-toggle="collapse" data-bs-target="#rt-filter-panel">
                 <i class="fa fa-filter"></i> Filtros
@@ -320,18 +334,25 @@ table.dataTable thead > tr > th.sorting_desc::after {
     <!-- ── Painel de Downloads ── -->
     <div class="collapse mb-3" id="rt-download-panel">
         <div class="card"><div class="card-body py-3">
+            <?php if ($show_dl_xlsx || $show_dl_csv): ?>
             <form id="rt-download-form" method="post" action="download.php">
                 <input type="hidden" name="col_keys" id="rt-input-col-keys">
                 <input type="hidden" name="filters"  id="rt-input-filters">
                 <input type="hidden" name="formato"  id="rt-input-formato">
                 <strong>Tabela filtrada:</strong>
+                <?php if ($show_dl_xlsx): ?>
                 <button type="button" id="rt-btn-xlsx" class="btn btn-success btn-sm ml-2" onclick="rtStartSSEDownload('xlsx')">
                     <i class="fa fa-file-excel-o"></i> XLSX
                 </button>
+                <?php endif; ?>
+                <?php if ($show_dl_csv): ?>
                 <button type="button" class="btn btn-secondary btn-sm ml-1" onclick="rtSubmitDownload('csv')">
                     <i class="fa fa-file-text-o"></i> CSV
                 </button>
+                <?php endif; ?>
             </form>
+            <?php endif; ?>
+            <?php if ($show_dl_zip): ?>
             <hr class="my-2">
             <form id="rt-zip-form" method="post" action="download.php" target="_blank">
                 <input type="hidden" name="col_keys" id="rt-zip-col-keys">
@@ -349,7 +370,8 @@ table.dataTable thead > tr > th.sorting_desc::after {
                     </button>
                 </div>
             </form>
-<?php if (!empty($tpl_files)): ?>
+            <?php endif; ?>
+<?php if ($show_dl_template && !empty($tpl_files)): ?>
 <hr class="my-2">
 <form id="rt-tpl-form">
     <div class="d-flex align-items-center flex-wrap" style="gap:8px">

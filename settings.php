@@ -318,7 +318,40 @@ JSCODE;
         array_map('htmlspecialchars_decode', $all_columns)
     ));
 
-    // ── 6. Templates XLSX ─────────────────────────────────────────────────────
+
+    // ── 7. Downloads disponíveis ──────────────────────────────────────────────
+    $settings->add(new admin_setting_heading(
+        'local_relatorio_treinamentos/downloads_heading',
+        'Downloads Disponíveis',
+        'Define quais opções de download são exibidas na tela do relatório.'
+    ));
+
+    $download_options = [
+        'xlsx'     => 'XLSX filtrada',
+        'csv'      => 'CSV filtrada',
+        'zip'      => 'Download por agrupamento (ZIP)',
+        'template' => 'Download por template XLSX',
+    ];
+    $downloads_default = array_fill_keys(array_keys($download_options), 1);
+
+    $settings->add(new admin_setting_configmulticheckbox(
+        'local_relatorio_treinamentos/downloads_visiveis',
+        get_string('setting_downloads_visiveis', 'local_relatorio_treinamentos'),
+        get_string('setting_downloads_visiveis_desc', 'local_relatorio_treinamentos'),
+        $downloads_default,
+        $download_options
+    ));
+
+    $settings->add(new admin_setting_configmulticheckbox(
+        'local_relatorio_treinamentos/downloads_visiveis_gestor',
+        get_string('setting_downloads_visiveis_gestor', 'local_relatorio_treinamentos'),
+        get_string('setting_downloads_visiveis_gestor_desc', 'local_relatorio_treinamentos'),
+        $downloads_default,
+        $download_options
+    ));
+
+    // ── 8. Templates XLSX ─────────────────────────────────────────────────────
+
     $settings->add(new admin_setting_heading(
         'local_relatorio_treinamentos/templates_heading',
         'Download por Template XLSX',
