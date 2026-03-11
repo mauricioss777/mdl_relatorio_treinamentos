@@ -155,26 +155,28 @@ if (!window.rtDcAdd) {
     window.rtDcAdd = function(lid, rid) {
         var l = document.getElementById(lid), r = document.getElementById(rid);
         Array.from(l.selectedOptions).forEach(function(o) { r.appendChild(o.cloneNode(true)); o.remove(); });
-        Array.from(r.options).forEach(function(o) { o.selected = true; });
     };
     window.rtDcRemove = function(lid, rid) {
         var l = document.getElementById(lid), r = document.getElementById(rid);
         Array.from(r.selectedOptions).forEach(function(o) { l.appendChild(o.cloneNode(true)); o.remove(); });
-        Array.from(r.options).forEach(function(o) { o.selected = true; });
     };
     window.rtDcUp = function(rid) {
         var r = document.getElementById(rid), opts = Array.from(r.options);
+        var sel = Array.from(r.selectedOptions).map(function(o) { return o.value; });
         for (var i = 1; i < opts.length; i++) {
             if (opts[i].selected && !opts[i-1].selected) r.insertBefore(opts[i], opts[i-1]);
         }
-        Array.from(r.options).forEach(function(o) { o.selected = true; });
+        opts = Array.from(r.options);
+        opts.forEach(function(o) { o.selected = sel.indexOf(o.value) !== -1; });
     };
     window.rtDcDown = function(rid) {
         var r = document.getElementById(rid), opts = Array.from(r.options);
+        var sel = Array.from(r.selectedOptions).map(function(o) { return o.value; });
         for (var i = opts.length - 2; i >= 0; i--) {
             if (opts[i].selected && !opts[i+1].selected) r.insertBefore(opts[i+1], opts[i]);
         }
-        Array.from(r.options).forEach(function(o) { o.selected = true; });
+        opts = Array.from(r.options);
+        opts.forEach(function(o) { o.selected = sel.indexOf(o.value) !== -1; });
     };
     document.addEventListener('DOMContentLoaded', function() {
         var form = document.getElementById('adminsettings');

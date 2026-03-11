@@ -506,6 +506,11 @@ function initRT(\$) {
     try { savedOrder = JSON.parse(localStorage.getItem(LS_ORDER_KEY)); } catch(e) {}
     var activeFilters  = {};
 
+    // visibleCols precisa estar definido antes de computeColOrder
+    var savedCols = null;
+    try { savedCols = JSON.parse(localStorage.getItem(LS_KEY)); } catch(e) {}
+    var visibleCols = savedCols || defaultVisible.slice();
+
     var columnsDef = columnKeys.map(function() {
         return { orderable: true, searchable: false, defaultContent: '' };
     });
@@ -551,9 +556,6 @@ function initRT(\$) {
     });
 
     // ── Visibilidade de colunas ───────────────────────────────────────────────
-    var savedCols = null;
-    try { savedCols = JSON.parse(localStorage.getItem(LS_KEY)); } catch(e) {}
-    var visibleCols = savedCols || defaultVisible.slice();
 
     function applyColVisibility(keys) {
         var last = columnKeys.length - 1;
