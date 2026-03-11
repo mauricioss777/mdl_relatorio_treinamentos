@@ -299,8 +299,8 @@ def fill_sheet_xml(xml_bytes, markers, marker_row, data_rows):
 
 def update_table_xml(xml_bytes, marker_row, n_data):
     """
-    Atualiza o ref da tabela para cobrir exatamente marker_row + n_data - 1 linhas de dados.
-    Preserva a linha de cabeçalho (marker_row - 1).
+    Atualiza o ref da tabela, remove tableType=queryTable e queryTableFieldId
+    para que o Excel não trate como intervalo de dados externos.
     """
     register_all_ns(xml_bytes)
     root = ET.fromstring(xml_bytes)
@@ -318,10 +318,20 @@ def update_table_xml(xml_bytes, marker_row, n_data):
     new_ref = f'{start}:{cell_addr(end_col, new_end_row)}'
     root.set('ref', new_ref)
 
+    # Remover tableType=queryTable (causa "intervalo de dados externos")
+    if root.get('tableType') == 'queryTable':
+        del root.attrib['tableType']
+
     # Atualizar autoFilter da tabela
     af = root.find(f'{{{XNS}}}autoFilter')
     if af is not None:
         af.set('ref', new_ref)
+
+    # Remover queryTableFieldId de cada tableColumn
+    cols_elem = root.find(f'{{{XNS}}}tableColumns')
+    if cols_elem is not None:
+        for col in cols_elem.findall(f'{{{XNS}}}tableColumn'):
+            col.attrib.pop('queryTableFieldId', None)
 
     return serialize_xml(root, xml_bytes)
 
