@@ -164,9 +164,39 @@ def get_sheet_table_paths(zf, sheet_path):
 
 # ── XML serialization ─────────────────────────────────────────────────────────
 
-def serialize_xml(root):
+def get_ns_declarations(xml_bytes):
+    """Extrai todas as declarações de namespace do XML (prefix -> uri)."""
+    ns_map = {}
+    try:
+        for event, elem in ET.iterparse(io.BytesIO(xml_bytes), events=['start-ns']):
+            pfx, uri = elem
+            if pfx not in ns_map:
+                ns_map[pfx] = uri
+    except ET.ParseError:
+        pass
+    return ns_map
+
+def serialize_xml(root, original_xml_bytes=None):
+    """Serializa root para bytes UTF-8. Se original_xml_bytes fornecido,
+    garante que todas as declarações de namespace do original estejam presentes
+    (necessário para preservar prefixos como xr2/xr3 usados em mc:Ignorable)."""
     xml_str = ET.tostring(root, encoding='unicode')
     declaration = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n'
+
+    if original_xml_bytes is not None:
+        # Encontrar namespaces declarados no original mas ausentes no output
+        orig_ns = get_ns_declarations(original_xml_bytes)
+        out_ns = get_ns_declarations((declaration + xml_str).encode('utf-8'))
+        missing = [(pfx, uri) for pfx, uri in orig_ns.items()
+                   if pfx not in out_ns and pfx != '']
+        if missing:
+            inject = ' '.join(f'xmlns:{pfx}="{uri}"' for pfx, uri in missing)
+            # Injetar após o nome do elemento raiz (antes do primeiro atributo ou >)
+            m = re.search(r'(<\w[\w:]*)', xml_str)
+            if m:
+                pos = m.end()
+                xml_str = xml_str[:pos] + ' ' + inject + xml_str[pos:]
+
     return (declaration + xml_str).encode('utf-8')
 
 # ── Worksheet modification ────────────────────────────────────────────────────
@@ -263,7 +293,7 @@ def fill_sheet_xml(xml_bytes, markers, marker_row, data_rows):
             max_col = max(markers.keys(), key=col_to_num)
             af.set('ref', f'{start}:{cell_addr(max_col, marker_row + n_data - 1)}')
 
-    return serialize_xml(root)
+    return serialize_xml(root, xml_bytes)
 
 # ── Table modification ────────────────────────────────────────────────────────
 
@@ -293,7 +323,7 @@ def update_table_xml(xml_bytes, marker_row, n_data):
     if af is not None:
         af.set('ref', new_ref)
 
-    return serialize_xml(root)
+    return serialize_xml(root, xml_bytes)
 
 # ── Main pipeline ─────────────────────────────────────────────────────────────
 
