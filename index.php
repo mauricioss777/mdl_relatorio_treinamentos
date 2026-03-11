@@ -404,8 +404,8 @@ table.dataTable thead > tr > th.sorting_desc::after {
                         <label class="mb-0" style="font-size:12px; font-weight:600"><?php echo s($label); ?></label>
                         <select id="rt-filter-<?php echo $field; ?>"
                                 class="form-control form-control-sm rt-filter-select"
-                                data-filter-field="<?php echo $field; ?>">
-                            <option value="">— Todos —</option>
+                                data-filter-field="<?php echo $field; ?>"
+                                multiple>
                             <?php foreach ($filter_options[$field] ?? [] as $fkey => $fopt): ?>
                                 <option value="<?php echo s($fkey); ?>"><?php echo s($fopt); ?></option>
                             <?php endforeach; ?>
@@ -634,17 +634,49 @@ function initRT(\$) {
         colToggleBtn.style.display = '';
     });
 
+    // ── Autocomplete nos filtros (Moodle core/form-autocomplete) ─────────────────
+    require(['core/form-autocomplete'], function(autocomplete) {
+        document.querySelectorAll('.rt-filter-select').forEach(function(sel) {
+            autocomplete.enhance(
+                '#' + sel.id,
+                true,   // tags: valores livres permitidos
+                false,  // sem AJAX datasource
+                '',     // placeholder
+                false,  // case insensitive
+                true,   // mostrar sugestões
+                '— Selecione —',
+                false   // não fechar ao selecionar
+            );
+        });
+    });
+
     // ── Filtros customizados ──────────────────────────────────────────────────
     document.getElementById('rt-apply-filters').addEventListener('click', function() {
         activeFilters = {};
         document.querySelectorAll('.rt-filter-select').forEach(function(sel) {
-            if (sel.value) { activeFilters[sel.dataset.filterField] = sel.value; }
+            var vals = Array.from(sel.selectedOptions)
+                .map(function(o) { return o.value; })
+                .filter(function(v) { return v !== ''; });
+            if (vals.length > 0) {
+                activeFilters[sel.dataset.filterField] = vals;
+            }
         });
         table.ajax.reload();
     });
     window.rtClearFilters = function() {
         activeFilters = {};
-        document.querySelectorAll('.rt-filter-select').forEach(function(s) { s.value = ''; });
+        document.querySelectorAll('.rt-filter-select').forEach(function(sel) {
+            // Limpar via botões "Remove" do autocomplete Moodle
+            var wrapper = sel.closest('.form-autocomplete-wrapper');
+            if (wrapper) {
+                // Clica em todos os botões de remoção das "pills" selecionadas
+                wrapper.querySelectorAll('.form-autocomplete-selection [data-value]')
+                    .forEach(function(btn) { btn.click(); });
+            } else {
+                // Fallback: reset direto no select (antes do enhance)
+                Array.from(sel.options).forEach(function(o) { o.selected = false; });
+            }
+        });
         table.ajax.reload();
     };
 

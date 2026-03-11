@@ -65,12 +65,10 @@ if ($estrategia === 'view') {
         $view_params['wgestor'] = fullname($USER);
     }
     foreach ($active_filters as $field => $value) {
-        $value = trim((string)$value);
         $field = clean_param($field, PARAM_ALPHANUMEXT);
-        if ($value === '' || !in_array($field, $col_keys_valid)) continue;
-        $pname = 'wf' . $pcount++;
-        $where_parts[]       = "$field = :$pname";
-        $view_params[$pname] = $value;
+        local_relatorio_treinamentos_build_filter_condition(
+            $field, $value, $col_keys_valid, $where_parts, $view_params, $pcount
+        );
     }
     if ($aplicar_filtro_cursos) {
         [$in_sql, $in_params] = $DB->get_in_or_equal($cursos_filtro_implicito, SQL_PARAMS_NAMED, 'dcf');
@@ -104,11 +102,7 @@ if ($estrategia !== 'view') {
     }
     if (!empty($active_filters)) {
         $dados = array_values(array_filter($dados, function($row) use ($active_filters) {
-            foreach ($active_filters as $field => $value) {
-                if ($value === '' || $value === null) continue;
-                if (($row->$field ?? '') !== $value) return false;
-            }
-            return true;
+            return local_relatorio_treinamentos_row_matches_filters($row, $active_filters);
         }));
     }
     if ($aplicar_filtro_cursos) {

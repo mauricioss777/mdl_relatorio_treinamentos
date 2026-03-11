@@ -392,3 +392,40 @@ function local_relatorio_treinamentos_is_gestor($user) {
 
     return in_array(trim((string)$valor), $valores_permitidos);
 }
+
+/**
+ * Monta condição SQL para um campo com valor único ou múltiplos (OR/IN).
+ */
+function local_relatorio_treinamentos_build_filter_condition(
+    string $field, $value, array $allowed_fields,
+    array &$where_parts, array &$params, int &$pcount
+): void {
+    global $DB;
+    if (!in_array($field, $allowed_fields)) return;
+    $values = is_array($value) ? array_values($value) : [trim((string)$value)];
+    $values = array_values(array_filter(array_map('strval', $values), fn($v) => trim($v) !== ''));
+    if (empty($values)) return;
+    if (count($values) === 1) {
+        $pname           = 'wf' . $pcount++;
+        $where_parts[]   = "$field = :$pname";
+        $params[$pname]  = $values[0];
+    } else {
+        [$in_sql, $in_params] = $DB->get_in_or_equal($values, SQL_PARAMS_NAMED, 'wf' . $pcount);
+        $pcount      += count($values);
+        $where_parts[] = "$field $in_sql";
+        $params        = array_merge($params, $in_params);
+    }
+}
+
+/**
+ * Verifica se uma linha corresponde a todos os filtros (OR por campo, AND entre campos).
+ */
+function local_relatorio_treinamentos_row_matches_filters(object $row, array $active_filters): bool {
+    foreach ($active_filters as $field => $value) {
+        $values = is_array($value) ? $value : [trim((string)$value)];
+        $values = array_filter(array_map('strval', $values), fn($v) => trim($v) !== '');
+        if (empty($values)) continue;
+        if (!in_array((string)($row->$field ?? ''), array_values($values))) return false;
+    }
+    return true;
+}

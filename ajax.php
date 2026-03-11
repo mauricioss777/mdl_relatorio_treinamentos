@@ -83,15 +83,13 @@ if ($estrategia === 'view') {
         $sql_params['wgestor'] = fullname($USER);
     }
 
+    $_allowed = array_merge($column_keys, array_values($filter_field_aliases));
     foreach ($filters as $field => $value) {
-        $value = trim((string)$value);
-        $field = clean_param($field, PARAM_ALPHANUMEXT);
+        $field        = clean_param($field, PARAM_ALPHANUMEXT);
         $actual_field = $filter_field_aliases[$field] ?? $field;
-        $allowed_cols = array_merge($column_keys, array_values($filter_field_aliases));
-        if ($value === '' || !in_array($actual_field, $allowed_cols)) continue;
-        $pname = 'wf' . $pcount++;
-        $where_parts[] = "$actual_field = :$pname";
-        $sql_params[$pname] = $value;
+        local_relatorio_treinamentos_build_filter_condition(
+            $actual_field, $value, $_allowed, $where_parts, $sql_params, $pcount
+        );
     }
 
     if ($search_val !== '') {
@@ -209,15 +207,13 @@ if ($aplicar_filtro_cursos) {
 $records_total = count($dados);
 
 // ── Filtros customizados ──────────────────────────────────────────────────────
+$_allowed_cache = array_merge($column_keys, array_values($filter_field_aliases));
 foreach ($filters as $field => $value) {
-    $value = trim((string)$value);
-    if ($value === '') { continue; }
-    $field = clean_param($field, PARAM_ALPHANUMEXT);
+    $field        = clean_param($field, PARAM_ALPHANUMEXT);
     $actual_field = $filter_field_aliases[$field] ?? $field;
-    $allowed_cols = array_merge($column_keys, array_values($filter_field_aliases));
-    if (!in_array($actual_field, $allowed_cols)) { continue; }
+    if (!in_array($actual_field, $_allowed_cache)) continue;
     $dados = array_values(array_filter($dados, function($row) use ($actual_field, $value) {
-        return (string)($row->$actual_field ?? '') === $value;
+        return local_relatorio_treinamentos_row_matches_filters($row, [$actual_field => $value]);
     }));
 }
 
