@@ -99,12 +99,12 @@ if ($estrategia === 'direct') {
                 }
                 $_mf_safe = clean_param($_mf, PARAM_ALPHANUMEXT);
                 $rows = $DB->get_records_sql(
-                    "SELECT DISTINCT {$_mf_safe} AS val FROM {$view} WHERE {$_mf_safe} IS NOT NULL AND {$_mf_safe} <> \'\' ORDER BY {$_mf_safe}"
+                    "SELECT DISTINCT {$_mf_safe} AS val FROM {$view} WHERE {$_mf_safe} IS NOT NULL AND {$_mf_safe} <> '' ORDER BY {$_mf_safe}"
                 );
                 $filter_options[$_mf] = [];
                 foreach ($rows as $_r) {
                     $_v = (string)$_r->val;
-                    if ($_v !== \'\') $filter_options[$_mf][$_v] = $_v;
+                    if ($_v !== '') $filter_options[$_mf][$_v] = $_v;
                 }
             }
             $cache->set('filter_options', $filter_options);

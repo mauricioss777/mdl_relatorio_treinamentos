@@ -130,8 +130,8 @@ if ($hassiteconfig) {
 {$left_html}    </select>
   </div>
   <div style="display:flex;flex-direction:column;justify-content:center;gap:4px;padding-top:18px">
-    <button type="button" class="btn btn-sm btn-outline-primary" onclick="rtDcAdd({$lj},{$rj})" title="Adicionar ao relatório">&rsaquo;</button>
-    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="rtDcRemove({$lj},{$rj})" title="Remover do relatório">&lsaquo;</button>
+    <button type="button" class="btn btn-sm btn-outline-primary" onclick="rtDcAdd('{$left_id}','{$right_id}')" title="Adicionar ao relatório">&rsaquo;</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="rtDcRemove('{$left_id}','{$right_id}')" title="Remover do relatório">&lsaquo;</button>
   </div>
   <div>
     <div style="font-size:11px;font-weight:600;color:#6c757d;margin-bottom:3px">No relatório <small class="text-muted">(em ordem)</small></div>
@@ -139,8 +139,8 @@ if ($hassiteconfig) {
 {$right_html}    </select>
   </div>
   <div style="display:flex;flex-direction:column;justify-content:center;gap:4px;padding-top:18px">
-    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="rtDcUp({$rj})" title="Mover para cima">&#9650;</button>
-    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="rtDcDown({$rj})" title="Mover para baixo">&#9660;</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="rtDcUp('{$right_id}')" title="Mover para cima">&#9650;</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="rtDcDown('{$right_id}')" title="Mover para baixo">&#9660;</button>
   </div>
 </div>
 <small class="form-text text-muted mt-1">M&iacute;nimo 2 colunas na lista do relat&oacute;rio. A ordem define a ordem padr&atilde;o das colunas.</small>
