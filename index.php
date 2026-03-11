@@ -86,6 +86,31 @@ if ($estrategia === 'direct') {
     }
 }
 
+    // Fix: se filter_options existe no cache mas faltam campos de $filter_fields,
+    // recomputa apenas os ausentes para evitar filtros em branco.
+    if (!empty($filter_options) && $estrategia === 'view' && !empty($filter_fields)) {
+        $missing_keys = array_diff(array_keys($filter_fields), array_keys($filter_options));
+        if (!empty($missing_keys)) {
+            $view = local_relatorio_treinamentos_get_view_name();
+            foreach ($missing_keys as $_mf) {
+                if ($_mf === 'nome_curso') {
+                    $filter_options[$_mf] = \local_relatorio_treinamentos\task\atualizar_relatorio::get_cursos_no_filtro($DB);
+                    continue;
+                }
+                $_mf_safe = clean_param($_mf, PARAM_ALPHANUMEXT);
+                $rows = $DB->get_records_sql(
+                    "SELECT DISTINCT {$_mf_safe} AS val FROM {$view} WHERE {$_mf_safe} IS NOT NULL AND {$_mf_safe} <> \'\' ORDER BY {$_mf_safe}"
+                );
+                $filter_options[$_mf] = [];
+                foreach ($rows as $_r) {
+                    $_v = (string)$_r->val;
+                    if ($_v !== \'\') $filter_options[$_mf][$_v] = $_v;
+                }
+            }
+            $cache->set('filter_options', $filter_options);
+        }
+    }
+
 $ultima_str = $ultima_atualizacao
     ? userdate($ultima_atualizacao, get_string('strftimedatetimeshort', 'langconfig'))
     : 'N/A';
@@ -151,9 +176,22 @@ if ($settings_val && is_array($settings_val)) {
 }
 
 // ── Saída HTML ────────────────────────────────────────────────────────────────
+
+// ── Templates XLSX ────────────────────────────────────────────────────────────
+$fs_ctx   = context_system::instance();
+$fs_store = get_file_storage();
+$tpl_files_raw = $fs_store->get_area_files(
+    $fs_ctx->id, 'local_relatorio_treinamentos', 'templates', 0, 'filename', false
+);
+$tpl_files = array_values(array_filter($tpl_files_raw, function($f) {
+    return !$f->is_directory()
+        && strtolower(pathinfo($f->get_filename(), PATHINFO_EXTENSION)) === 'xlsx';
+}));
+
 echo $OUTPUT->header();
 ?>
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap4.min.css">
+<link rel="stylesheet" href="https://cdn.datatables.net/colreorder/1.7.0/css/colReorder.dataTables.min.css">
 <style>
 /* ── Floating column selector ── */
 #rt-col-toggle {
@@ -311,6 +349,25 @@ table.dataTable thead > tr > th.sorting_desc::after {
                     </button>
                 </div>
             </form>
+<?php if (!empty($tpl_files)): ?>
+<hr class="my-2">
+<form id="rt-tpl-form">
+    <div class="d-flex align-items-center flex-wrap" style="gap:8px">
+        <strong>Download por template:</strong>
+        <select id="rt-tpl-select" class="form-control form-control-sm" style="width:280px">
+            <?php foreach ($tpl_files as $tpl_f): ?>
+                <option value="<?php echo s($tpl_f->get_filename()); ?>">
+                    <?php echo s(pathinfo($tpl_f->get_filename(), PATHINFO_FILENAME)); ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+        <button type="button" class="btn btn-warning btn-sm"
+                onclick="rtStartSSEDownload('template',{template_filename:document.getElementById('rt-tpl-select').value})">
+            <i class="fa fa-file-excel-o"></i> Download Template
+        </button>
+    </div>
+</form>
+<?php endif; ?>
         </div></div>
     </div>
 
@@ -424,10 +481,12 @@ require(['jquery'], function(\$) {
 
     loadScript('https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js', function() {
         loadScript('https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap4.min.js', function() {
+        loadScript('https://cdn.datatables.net/colreorder/1.7.0/js/dataTables.colReorder.min.js', function() {
             // Restaura AMD após DataTables já registrado como global ($().DataTable)
             window.define  = _define;
             window.require = _require;
             initRT(\$);
+        });
         });
     });
 
@@ -436,16 +495,27 @@ function initRT(\$) {
     var defaultVisible = {$default_visible_json};
     var ajaxUrl        = M.cfg.wwwroot + '/local/relatorio_treinamentos/ajax.php';
     var LS_KEY         = 'rt_visible_cols_v1';
+    var LS_ORDER_KEY = 'rt_col_order_v1';
+    function computeColOrder(visKeys, allKeys) {
+        var result = [];
+        visKeys.forEach(function(k) { var i = allKeys.indexOf(k); if (i !== -1) result.push(i); });
+        allKeys.forEach(function(k, i) { if (visKeys.indexOf(k) === -1) result.push(i); });
+        return result;
+    }
+    var savedOrder = null;
+    try { savedOrder = JSON.parse(localStorage.getItem(LS_ORDER_KEY)); } catch(e) {}
     var activeFilters  = {};
 
     var columnsDef = columnKeys.map(function() {
         return { orderable: true, searchable: false, defaultContent: '' };
     });
 
+    var initialColOrder = savedOrder || computeColOrder(visibleCols, columnKeys);
     var table = \$('#rt-table').DataTable({
         processing:  true,
         serverSide:  true,
         scrollX:     true,
+        colReorder:  { order: initialColOrder },
         pageLength:  25,
         lengthMenu:  [[10, 25, 50, 100], [10, 25, 50, 100]],
         columns:     columnsDef,
@@ -495,16 +565,23 @@ function initRT(\$) {
             cb.checked = keys.indexOf(cb.dataset.colKey) !== -1;
         });
     }
-    function saveAndApply(keys) {
+    function saveAndApply(keys, order) {
         visibleCols = keys;
         try { localStorage.setItem(LS_KEY, JSON.stringify(keys)); } catch(e) {}
+        if (order !== undefined) {
+            try { localStorage.setItem(LS_ORDER_KEY, JSON.stringify(order)); } catch(e) {}
+        }
         rtShowOverlay('Atualizando colunas...');
         setTimeout(function() {
             applyColVisibility(keys);
+            if (order !== undefined) { try { table.colReorder.order(order); } catch(e) {} }
             rtHideOverlay();
         }, 0);
     }
     applyColVisibility(visibleCols);
+    table.on('colreorder.dt', function() {
+        try { localStorage.setItem(LS_ORDER_KEY, JSON.stringify(table.colReorder.order())); } catch(e) {}
+    });
 
     document.querySelectorAll('.rt-col-toggle-cb').forEach(function(cb) {
         cb.addEventListener('change', function() {
@@ -516,7 +593,10 @@ function initRT(\$) {
     });
 
     document.getElementById('rt-col-select-all').addEventListener('click', function() { saveAndApply(columnKeys.slice()); });
-    document.getElementById('rt-col-select-default').addEventListener('click', function() { saveAndApply(defaultVisible.slice()); });
+    document.getElementById('rt-col-select-default').addEventListener('click', function() {
+        var defOrder = computeColOrder(defaultVisible, columnKeys);
+        saveAndApply(defaultVisible.slice(), defOrder);
+    });
     document.getElementById('rt-col-unselect-all').addEventListener('click', function() { saveAndApply([]); });
 
     var colToggleBtn = document.getElementById('rt-col-toggle');

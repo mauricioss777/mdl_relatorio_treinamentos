@@ -353,4 +353,92 @@ if ($formato === 'zip') {
     exit;
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// TEMPLATE (preenche XLSX template com os dados filtrados)
+// ═════════════════════════════════════════════════════════════════════════════
+if ($formato === 'template') {
+    if (!local_relatorio_treinamentos_get_python_path()) {
+        $sse_flush(['error' => 'Python não configurado no servidor.']);
+        exit;
+    }
+
+    $template_filename = optional_param('template_filename', '', PARAM_FILE);
+    if (empty($template_filename)) {
+        $sse_flush(['error' => 'Template não especificado.']);
+        exit;
+    }
+
+    $tpl_ctx  = context_system::instance();
+    $tpl_fs   = get_file_storage();
+    $tpl_file = $tpl_fs->get_file(
+        $tpl_ctx->id, 'local_relatorio_treinamentos', 'templates', 0, '/', $template_filename
+    );
+    if (!$tpl_file) {
+        $sse_flush(['error' => 'Template não encontrado: ' . s($template_filename)]);
+        exit;
+    }
+
+    $sse_flush(['step' => 0, 'total' => 2, 'label' => 'Consultando dados...']);
+
+    $tmp_csv      = sys_get_temp_dir() . '/rt_tpl_' . $token . '.csv';
+    $tmp_template = sys_get_temp_dir() . '/rt_tmpl_' . $token . '.xlsx';
+    $out_file     = sys_get_temp_dir() . '/rt_tpl_out_' . $token . '.xlsx';
+    $bom          = chr(0xEF) . chr(0xBB) . chr(0xBF);
+
+    // Gera CSV com keys como cabeçalho (para corresponder a {nome_coluna} no template)
+    $fh = fopen($tmp_csv, 'w');
+    fwrite($fh, $bom);
+    fputcsv($fh, array_keys($export_cols), ';');
+
+    if ($estrategia === 'view') {
+        $rs = $DB->get_recordset_sql(
+            "SELECT * FROM $view $view_where_sql ORDER BY prof_nome_filial, bas_nome_funcionario, nome_curso",
+            $view_params
+        );
+        foreach ($rs as $row) {
+            fputcsv($fh, rt_get_row_values($row, $export_cols), ';');
+        }
+        $rs->close();
+    } else {
+        foreach ($dados as $row) {
+            fputcsv($fh, rt_get_row_values($row, $export_cols), ';');
+        }
+    }
+    fclose($fh);
+
+    // Copia template para temp
+    $tpl_file->copy_content_to($tmp_template);
+
+    $sse_flush(['step' => 1, 'total' => 2, 'label' => 'Preenchendo template...']);
+
+    $py_script = $CFG->dirroot . '/local/relatorio_treinamentos/cli/fill_template.py';
+    $cmd = escapeshellarg(local_relatorio_treinamentos_get_python_path())
+         . ' ' . escapeshellarg($py_script)
+         . ' ' . escapeshellarg($tmp_template)
+         . ' ' . escapeshellarg($out_file)
+         . ' ' . escapeshellarg($tmp_csv)
+         . ' 2>&1';
+    $py_out = [];
+    $py_ret = 0;
+    exec($cmd, $py_out, $py_ret);
+    @unlink($tmp_csv);
+    @unlink($tmp_template);
+
+    if ($py_ret !== 0 || !file_exists($out_file)) {
+        $sse_flush(['error' => 'Falha ao preencher template: ' . implode(' ', $py_out)]);
+        exit;
+    }
+
+    $filename_tpl = pathinfo($template_filename, PATHINFO_FILENAME) . '_' . date('Ymd') . '.xlsx';
+    file_put_contents($token_path, json_encode([
+        'userid'   => $USER->id,
+        'file'     => $out_file,
+        'filename' => $filename_tpl,
+        'expires'  => time() + 300,
+    ]));
+
+    $sse_flush(['done' => true, 'token' => $token, 'filename' => $filename_tpl]);
+    exit;
+}
+
 $sse_flush(['error' => 'Formato inválido.']);

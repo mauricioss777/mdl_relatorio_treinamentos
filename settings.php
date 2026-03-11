@@ -59,6 +59,143 @@ if ($hassiteconfig) {
 
     } // end if (!class_exists)
 
+    if (!class_exists('local_rt_admin_dual_column')) {
+    class local_rt_admin_dual_column extends admin_setting {
+        private $choices;
+
+        public function __construct($name, $visiblename, $description, $defaultsetting, $choices) {
+            $this->choices = $choices;
+            $default_csv = is_array($defaultsetting)
+                ? implode(',', array_keys(array_filter($defaultsetting)))
+                : (string)$defaultsetting;
+            parent::__construct($name, $visiblename, $description, $default_csv);
+        }
+
+        public function get_setting() {
+            $result = $this->config_read($this->name);
+            return is_null($result) ? $this->defaultsetting : $result;
+        }
+
+        public function write_setting($data) {
+            if (!is_array($data)) return get_string('errorsetting', 'admin');
+            $result = [];
+            foreach ($data as $value) {
+                if ($value !== '' && array_key_exists($value, $this->choices)) {
+                    $result[] = $value;
+                }
+            }
+            if (count($result) < 2) return 'Selecione pelo menos 2 colunas para o relatório.';
+            return $this->config_write($this->name, implode(',', $result))
+                ? '' : get_string('errorsetting', 'admin');
+        }
+
+        public function output_html($data, $query = '') {
+            $selected_keys = [];
+            if ($data !== null && $data !== '') {
+                foreach (explode(',', $data) as $k) {
+                    $k = trim($k);
+                    if ($k !== '' && isset($this->choices[$k])) $selected_keys[] = $k;
+                }
+            }
+            $selected_set = array_flip($selected_keys);
+
+            $fullname = $this->get_full_name();
+            $safe_id  = 'rt_dc_' . preg_replace('/[^a-z0-9]/', '_', strtolower($this->name));
+            $left_id  = $safe_id . '_left';
+            $right_id = $safe_id . '_right';
+            $size     = min(max(count($this->choices), 8), 18);
+
+            $left_html = '';
+            foreach ($this->choices as $key => $label) {
+                if (!isset($selected_set[$key])) {
+                    $left_html .= '<option value="' . s($key) . '">' . s($label) . '</option>' . "\n";
+                }
+            }
+            $right_html = '';
+            foreach ($selected_keys as $key) {
+                $right_html .= '<option value="' . s($key) . '">' . s($this->choices[$key]) . '</option>' . "\n";
+            }
+
+            $lid  = s($left_id);
+            $rid  = s($right_id);
+            $fn   = s($fullname);
+            $lj   = json_encode($left_id);
+            $rj   = json_encode($right_id);
+
+            $html = <<<HTML
+<div style="display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap">
+  <div>
+    <div style="font-size:11px;font-weight:600;color:#6c757d;margin-bottom:3px">Disponíveis</div>
+    <select multiple id="{$lid}" class="form-control rt-dc-left" style="min-width:200px;max-width:260px" size="{$size}">
+{$left_html}    </select>
+  </div>
+  <div style="display:flex;flex-direction:column;justify-content:center;gap:4px;padding-top:18px">
+    <button type="button" class="btn btn-sm btn-outline-primary" onclick="rtDcAdd({$lj},{$rj})" title="Adicionar ao relatório">&rsaquo;</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="rtDcRemove({$lj},{$rj})" title="Remover do relatório">&lsaquo;</button>
+  </div>
+  <div>
+    <div style="font-size:11px;font-weight:600;color:#6c757d;margin-bottom:3px">No relatório <small class="text-muted">(em ordem)</small></div>
+    <select multiple name="{$fn}[]" id="{$rid}" class="form-control rt-dc-right" style="min-width:200px;max-width:260px" size="{$size}">
+{$right_html}    </select>
+  </div>
+  <div style="display:flex;flex-direction:column;justify-content:center;gap:4px;padding-top:18px">
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="rtDcUp({$rj})" title="Mover para cima">&#9650;</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="rtDcDown({$rj})" title="Mover para baixo">&#9660;</button>
+  </div>
+</div>
+<small class="form-text text-muted mt-1">M&iacute;nimo 2 colunas na lista do relat&oacute;rio. A ordem define a ordem padr&atilde;o das colunas.</small>
+HTML;
+
+            static $js_done = false;
+            if (!$js_done) {
+                $js_done = true;
+                $html .= <<<'JSCODE'
+<script>
+if (!window.rtDcAdd) {
+    window.rtDcAdd = function(lid, rid) {
+        var l = document.getElementById(lid), r = document.getElementById(rid);
+        Array.from(l.selectedOptions).forEach(function(o) { r.appendChild(o.cloneNode(true)); o.remove(); });
+        Array.from(r.options).forEach(function(o) { o.selected = true; });
+    };
+    window.rtDcRemove = function(lid, rid) {
+        var l = document.getElementById(lid), r = document.getElementById(rid);
+        Array.from(r.selectedOptions).forEach(function(o) { l.appendChild(o.cloneNode(true)); o.remove(); });
+        Array.from(r.options).forEach(function(o) { o.selected = true; });
+    };
+    window.rtDcUp = function(rid) {
+        var r = document.getElementById(rid), opts = Array.from(r.options);
+        for (var i = 1; i < opts.length; i++) {
+            if (opts[i].selected && !opts[i-1].selected) r.insertBefore(opts[i], opts[i-1]);
+        }
+        Array.from(r.options).forEach(function(o) { o.selected = true; });
+    };
+    window.rtDcDown = function(rid) {
+        var r = document.getElementById(rid), opts = Array.from(r.options);
+        for (var i = opts.length - 2; i >= 0; i--) {
+            if (opts[i].selected && !opts[i+1].selected) r.insertBefore(opts[i+1], opts[i]);
+        }
+        Array.from(r.options).forEach(function(o) { o.selected = true; });
+    };
+    document.addEventListener('DOMContentLoaded', function() {
+        var form = document.getElementById('adminsettings');
+        if (!form) return;
+        form.addEventListener('submit', function() {
+            document.querySelectorAll('.rt-dc-right').forEach(function(s) {
+                Array.from(s.options).forEach(function(o) { o.selected = true; });
+            });
+        });
+    });
+}
+</script>
+JSCODE;
+            }
+
+            return format_admin_setting($this, $this->visiblename, $html,
+                $this->description, $right_id, '', null, $query);
+        }
+    }
+    } // end if (!class_exists)
+
     // ── Página de settings ────────────────────────────────────────────────────
     $settings = new admin_settingpage(
         'local_relatorio_treinamentos',
@@ -82,7 +219,7 @@ if ($hassiteconfig) {
     }
 
     // ── 1. Colunas visíveis por padrão ────────────────────────────────────────
-    $settings->add(new local_rt_admin_multiselect(
+    $settings->add(new local_rt_admin_dual_column(
         'local_relatorio_treinamentos/colunas_visiveis',
         get_string('setting_colunas_visiveis', 'local_relatorio_treinamentos'),
         get_string('setting_colunas_visiveis_desc', 'local_relatorio_treinamentos'),
@@ -177,6 +314,22 @@ if ($hassiteconfig) {
         get_string('setting_filtros_visiveis_gestor_desc', 'local_relatorio_treinamentos'),
         $default_filter_gestor_val,
         array_map('htmlspecialchars_decode', $all_columns)
+    ));
+
+    // ── 6. Templates XLSX ─────────────────────────────────────────────────────
+    $settings->add(new admin_setting_heading(
+        'local_relatorio_treinamentos/templates_heading',
+        'Download por Template XLSX',
+        'Faça upload de arquivos XLSX com marcadores <code>{nome_coluna}</code> que serão preenchidos com os dados do relatório.'
+    ));
+
+    $settings->add(new admin_setting_configstoredfile(
+        'local_relatorio_treinamentos/templates_xlsx',
+        'Templates XLSX',
+        'Arquivos template XLSX. Cada célula com <code>{nome_coluna}</code> marca o início de uma coluna de dados.',
+        'templates',
+        0,
+        ['maxfiles' => -1, 'accepted_types' => ['.xlsx']]
     ));
 
     $ADMIN->add('localplugins', $settings);
