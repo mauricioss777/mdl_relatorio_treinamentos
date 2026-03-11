@@ -511,8 +511,8 @@ function initRT(\$) {
     try { savedCols = JSON.parse(localStorage.getItem(LS_KEY)); } catch(e) {}
     var visibleCols = savedCols || defaultVisible.slice();
 
-    var columnsDef = columnKeys.map(function() {
-        return { orderable: true, searchable: false, defaultContent: '' };
+    var columnsDef = columnKeys.map(function(key) {
+        return { data: key, orderable: true, searchable: false, defaultContent: '' };
     });
 
     var initialColOrder = savedOrder || computeColOrder(visibleCols, columnKeys);

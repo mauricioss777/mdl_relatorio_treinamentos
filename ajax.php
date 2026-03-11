@@ -148,16 +148,16 @@ if ($estrategia === 'view') {
         foreach ($column_keys as $key) {
             $val = $row->$key ?? '';
             if ($key === 'progresso_percentual') {
-                $pct       = number_format((float)$val, 2);
-                $rowdata[] = '<div class="progress rt-progress" title="' . $pct . '%">'
-                           . '<div class="progress-bar bg-success" role="progressbar" style="width:' . $pct . '%"></div>'
-                           . '</div><small>' . $pct . '%</small>';
+                $pct          = number_format((float)$val, 2);
+                $rowdata[$key] = '<div class="progress rt-progress" title="' . $pct . '%">'
+                               . '<div class="progress-bar bg-success" role="progressbar" style="width:' . $pct . '%"></div>'
+                               . '</div><small>' . $pct . '%</small>';
             } elseif ($key === 'concluido') {
-                $rowdata[] = ($val === 'Sim')
+                $rowdata[$key] = ($val === 'Sim')
                     ? '<span class="badge badge-success">Sim</span>'
                     : '<span class="badge badge-secondary">Não</span>';
             } else {
-                $rowdata[] = s((string)$val);
+                $rowdata[$key] = s((string)$val);
             }
         }
         $data[] = $rowdata;
@@ -256,16 +256,16 @@ foreach ($page as $row) {
     foreach ($column_keys as $key) {
         $val = $row->$key ?? '';
         if ($key === 'progresso_percentual') {
-            $pct       = number_format((float)$val, 2);
-            $rowdata[] = '<div class="progress rt-progress" title="' . $pct . '%">'
-                       . '<div class="progress-bar bg-success" role="progressbar" style="width:' . $pct . '%"></div>'
-                       . '</div><small>' . $pct . '%</small>';
+            $pct           = number_format((float)$val, 2);
+            $rowdata[$key] = '<div class="progress rt-progress" title="' . $pct . '%">'
+                           . '<div class="progress-bar bg-success" role="progressbar" style="width:' . $pct . '%"></div>'
+                           . '</div><small>' . $pct . '%</small>';
         } elseif ($key === 'concluido') {
-            $rowdata[] = ($val === 'Sim')
+            $rowdata[$key] = ($val === 'Sim')
                 ? '<span class="badge badge-success">Sim</span>'
                 : '<span class="badge badge-secondary">Não</span>';
         } else {
-            $rowdata[] = s((string)$val);
+            $rowdata[$key] = s((string)$val);
         }
     }
     $data[] = $rowdata;
