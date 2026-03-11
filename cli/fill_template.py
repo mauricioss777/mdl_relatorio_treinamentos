@@ -325,6 +325,35 @@ def update_table_xml(xml_bytes, marker_row, n_data):
 
     return serialize_xml(root, xml_bytes)
 
+# ── Query table cleanup helpers ──────────────────────────────────────────────
+
+def strip_rel_type(xml_bytes, rel_type_to_remove):
+    """Remove entradas de um tipo específico do arquivo .rels."""
+    REL_NS = 'http://schemas.openxmlformats.org/package/2006/relationships'
+    try:
+        register_all_ns(xml_bytes)
+        root = ET.fromstring(xml_bytes)
+        for rel in list(root.findall(f'{{{REL_NS}}}Relationship')):
+            if rel.get('Type') == rel_type_to_remove:
+                root.remove(rel)
+        return serialize_xml(root, xml_bytes)
+    except Exception:
+        return xml_bytes
+
+def strip_content_types(xml_bytes, skip_paths):
+    """Remove entradas de Override para paths que foram excluídos do ZIP."""
+    CT_NS = 'http://schemas.openxmlformats.org/package/2006/content-types'
+    try:
+        register_all_ns(xml_bytes)
+        root = ET.fromstring(xml_bytes)
+        for override in list(root.findall(f'{{{CT_NS}}}Override')):
+            part = override.get('PartName', '').lstrip('/')
+            if part in skip_paths:
+                root.remove(override)
+        return serialize_xml(root, xml_bytes)
+    except Exception:
+        return xml_bytes
+
 # ── Main pipeline ─────────────────────────────────────────────────────────────
 
 def fill_template(template_path, output_path, csv_path):
@@ -392,9 +421,27 @@ def fill_template(template_path, output_path, csv_path):
 
         n_data = len(data_rows)
 
+        # Arquivos de query table a remover do output (causam erro no Excel quando
+        # a conexão externa está deletada ou não é mais válida)
+        QUERY_TABLE_TYPE = (
+            'http://schemas.openxmlformats.org/officeDocument/2006/relationships/queryTable'
+        )
+        skip_items = set()
+        # Identificar todos os arquivos de query table
+        for name in zf_in.namelist():
+            if re.match(r'^xl/queryTables/', name):
+                skip_items.add(name)
+            if re.match(r'^xl/connections\.xml$', name):
+                skip_items.add(name)
+
         # Escrever ZIP de saída
         with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf_out:
             for item in zf_in.namelist():
+                # Pular arquivos de query table
+                if item in skip_items:
+                    print(f'  Removendo {item} (query table externa)')
+                    continue
+
                 item_bytes = zf_in.read(item)
 
                 if item in sheet_markers:
@@ -407,6 +454,14 @@ def fill_template(template_path, output_path, csv_path):
                     mrow, nd = affected_tables[item]
                     print(f'  Tabela {item}: ref → row {mrow} + {nd} linhas')
                     item_bytes = update_table_xml(item_bytes, mrow, nd)
+
+                elif item.endswith('/_rels/table1.xml.rels') or re.match(r'^xl/tables/_rels/', item):
+                    # Remover relacionamento com query table do rels da tabela
+                    item_bytes = strip_rel_type(item_bytes, QUERY_TABLE_TYPE)
+
+                elif item == '[Content_Types].xml':
+                    # Remover entradas de content type para query tables removidas
+                    item_bytes = strip_content_types(item_bytes, skip_items)
 
                 zf_out.writestr(item, item_bytes)
 
