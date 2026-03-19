@@ -9,8 +9,9 @@ connections.xml, tableType="queryTable", queryTableFieldId) que causam "Registro
 Removidos" quando a conexão está marcada como deleted.
 
 Sintaxe no template: célula com valor exato {nome_coluna}
-O script localiza a linha marcadora, substitui pelos dados, descarta linhas pré-existentes
-abaixo da linha marcadora (dados do query table), e atualiza refs de tabela.
+O script localiza a linha marcadora, PRESERVA-A no output, insere os dados a partir da
+linha seguinte, descarta linhas pré-existentes abaixo da linha marcadora (dados do
+query table), e atualiza refs de tabela.
 
 Uso: fill_template.py <template.xlsx> <output.xlsx> <dados.csv>
 """
@@ -207,10 +208,9 @@ def serialize_xml(root, original_xml_bytes=None):
 
 def fill_sheet_xml(xml_bytes, markers, marker_row, data_rows):
     """
-    Substitui a linha marcadora e remove linhas pré-existentes abaixo dela.
-    Linhas ACIMA do marker_row são preservadas intactas.
-    Linhas ABAIXO do marker_row são DESCARTADAS (eram dados do query table).
-    As N linhas de dados são escritas a partir de marker_row.
+    Preserva a linha marcadora (com {nome_coluna}) e insere dados a partir da
+    linha seguinte. Linhas pré-existentes ABAIXO do marker_row são DESCARTADAS
+    (eram dados do query table). Linhas ACIMA são preservadas intactas.
 
     dimension e autoFilter: preserva colunas originais, só atualiza linha final.
     """
@@ -223,28 +223,30 @@ def fill_sheet_xml(xml_bytes, markers, marker_row, data_rows):
 
     n_data = len(data_rows)
 
-    # Coletar linhas antes do marker
-    rows_before = []
+    # Coletar linhas até o marker (inclusive)
+    rows_to_keep = []
     template_row_elem = None
     for row_e in sheetData.findall(f'{{{XNS}}}row'):
         rnum = int(row_e.get('r', 0))
         if rnum < marker_row:
-            rows_before.append(row_e)
+            rows_to_keep.append(row_e)
         elif rnum == marker_row:
             template_row_elem = row_e
+            rows_to_keep.append(row_e)  # Preservar a linha marcadora
         # Linhas após marker_row são descartadas (dados pré-existentes do query table)
 
     # Limpar sheetData
     for child in list(sheetData):
         sheetData.remove(child)
 
-    # Reinserir linhas antes do marker
-    for row_e in rows_before:
+    # Reinserir linhas até o marker (inclusive)
+    for row_e in rows_to_keep:
         sheetData.append(row_e)
 
-    # Inserir linhas de dados
+    # Inserir linhas de dados a partir de marker_row + 1
+    data_start_row = marker_row + 1
     for i, dr in enumerate(data_rows):
-        target_row = marker_row + i
+        target_row = data_start_row + i
 
         if i == 0 and template_row_elem is not None:
             # Primeira linha de dados: usa template como base (estilos, altura, etc.)
@@ -252,19 +254,7 @@ def fill_sheet_xml(xml_bytes, markers, marker_row, data_rows):
             # Remover spans (Excel recalcula; valor herdado causa "Registros Removidos")
             if "spans" in new_row.attrib:
                 del new_row.attrib["spans"]
-        else:
-            new_row = ET.Element(f'{{{XNS}}}row')
-            new_row.set('r', str(target_row))
-            if template_row_elem is not None:
-                for attr in ['ht', 'customHeight']:
-                    v = template_row_elem.get(attr)
-                    if v:
-                        new_row.set(attr, v)
-
-        new_row.set('r', str(target_row))
-
-        if i == 0:
-            # Substituir células marcadoras, manter demais células da linha template
+            # Substituir células marcadoras por dados, manter demais células
             for c_e in list(new_row.findall(f'{{{XNS}}}c')):
                 col_l, _ = split_ref(c_e.get('r', ''))
                 if col_l in markers:
@@ -274,16 +264,22 @@ def fill_sheet_xml(xml_bytes, markers, marker_row, data_rows):
                 elif col_l:
                     c_e.set('r', cell_addr(col_l, target_row))
         else:
-            # Linhas subsequentes: apenas células de dados
-            for c_e in list(new_row.findall(f'{{{XNS}}}c')):
-                new_row.remove(c_e)
+            new_row = ET.Element(f'{{{XNS}}}row')
+            if template_row_elem is not None:
+                for attr in ['ht', 'customHeight']:
+                    v = template_row_elem.get(attr)
+                    if v:
+                        new_row.set(attr, v)
             for col_l in sorted(markers.keys(), key=col_to_num):
                 value = dr.get(markers[col_l], '')
                 new_row.append(make_cell(col_l, target_row, value))
 
+        new_row.set('r', str(target_row))
         sheetData.append(new_row)
 
     # Atualizar dimension — preservar colunas originais, só mudar linha final
+    # last_data_row = marker_row (header marcadores) + n_data (linhas de dados)
+    last_data_row = marker_row + n_data
     dim = root.find(f'{{{XNS}}}dimension')
     if dim is not None:
         old_ref = dim.get('ref', '')
@@ -291,7 +287,6 @@ def fill_sheet_xml(xml_bytes, markers, marker_row, data_rows):
             start_part, end_part = old_ref.split(':', 1)
             end_col, _ = split_ref(end_part)
             if end_col:
-                last_data_row = marker_row + n_data - 1
                 dim.set('ref', f'{start_part}:{cell_addr(end_col, last_data_row)}')
 
     # Atualizar autoFilter do worksheet se existir — preservar colunas originais
@@ -302,7 +297,6 @@ def fill_sheet_xml(xml_bytes, markers, marker_row, data_rows):
             start_part, end_part = old_ref.split(':', 1)
             end_col, _ = split_ref(end_part)
             if end_col:
-                last_data_row = marker_row + n_data - 1
                 af.set('ref', f'{start_part}:{cell_addr(end_col, last_data_row)}')
 
     return serialize_xml(root, xml_bytes)
@@ -549,7 +543,7 @@ def fill_template(template_path, output_path, csv_path):
                     item_bytes = clean_table_querytable(item_bytes)
                     if item in affected_tables:
                         mrow, nd = affected_tables[item]
-                        new_end_row = mrow + nd - 1
+                        new_end_row = mrow + nd  # marker row preservada + N linhas de dados
                         print(f'  Tabela {item}: ref → row {mrow} + {nd} linhas')
                         item_bytes = update_table_ref(item_bytes, new_end_row)
                     else:
