@@ -172,7 +172,7 @@ function local_relatorio_treinamentos_get_report_sql() {
             to_timestamp(NULLIF(NULLIF(info_situacao_fim.data, ''), '0')::bigint)    AS prof_data_fim_situacao,
             info_insc_admissao.data                         AS insc_data_admissao_inscricao,
             info_insc_demissao.data                         AS insc_data_demissao_inscricao,
-            c.fullname                                      AS nome_curso,
+            TRIM(c.fullname)                                AS nome_curso,
             ROUND(
                 COALESCE((
                     SELECT COUNT(cmc2.id) * 100.0 / NULLIF(COUNT(cm2.id), 0)
