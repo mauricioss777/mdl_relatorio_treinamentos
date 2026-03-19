@@ -382,7 +382,7 @@ if ($formato === 'template') {
     // Gera CSV com keys como cabeçalho (para corresponder a {nome_coluna} no template)
     $fh = fopen($tmp_csv, 'w');
     fwrite($fh, $bom);
-    fputcsv($fh, array_keys($export_cols), ';');
+    fputcsv($fh, array_keys($all_columns), ';');
 
     if ($estrategia === 'view') {
         $rs = $DB->get_recordset_sql(
@@ -390,12 +390,12 @@ if ($formato === 'template') {
             $view_params
         );
         foreach ($rs as $row) {
-            fputcsv($fh, rt_get_row_values($row, $export_cols), ';');
+            fputcsv($fh, rt_get_row_values($row, $all_columns), ';');
         }
         $rs->close();
     } else {
         foreach ($dados as $row) {
-            fputcsv($fh, rt_get_row_values($row, $export_cols), ';');
+            fputcsv($fh, rt_get_row_values($row, $all_columns), ';');
         }
     }
     fclose($fh);

@@ -249,11 +249,14 @@ def fill_sheet_xml(xml_bytes, markers, marker_row, data_rows):
         if i == 0 and template_row_elem is not None:
             # Primeira linha de dados: usa template como base (estilos, altura, etc.)
             new_row = copy.deepcopy(template_row_elem)
+            # Remover spans (Excel recalcula; valor herdado causa "Registros Removidos")
+            if "spans" in new_row.attrib:
+                del new_row.attrib["spans"]
         else:
             new_row = ET.Element(f'{{{XNS}}}row')
             new_row.set('r', str(target_row))
             if template_row_elem is not None:
-                for attr in ['ht', 'customHeight', 'spans']:
+                for attr in ['ht', 'customHeight']:
                     v = template_row_elem.get(attr)
                     if v:
                         new_row.set(attr, v)
