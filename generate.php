@@ -375,8 +375,9 @@ if ($formato === 'template') {
     $sse_flush(['step' => 0, 'total' => 2, 'label' => 'Consultando dados...']);
 
     $tmp_csv      = sys_get_temp_dir() . '/rt_tpl_' . $token . '.csv';
-    $tmp_template = sys_get_temp_dir() . '/rt_tmpl_' . $token . '.xlsx';
-    $out_file     = sys_get_temp_dir() . '/rt_tpl_out_' . $token . '.xlsx';
+    $tpl_ext      = pathinfo($template_filename, PATHINFO_EXTENSION) ?: 'xlsx';
+    $tmp_template = sys_get_temp_dir() . '/rt_tmpl_' . $token . '.' . $tpl_ext;
+    $out_file     = sys_get_temp_dir() . '/rt_tpl_out_' . $token . '.' . $tpl_ext;
     $bom          = chr(0xEF) . chr(0xBB) . chr(0xBF);
 
     // Gera CSV com keys como cabeçalho (para corresponder a {nome_coluna} no template)
@@ -423,7 +424,7 @@ if ($formato === 'template') {
         exit;
     }
 
-    $filename_tpl = pathinfo($template_filename, PATHINFO_FILENAME) . '_' . date('Ymd') . '.xlsx';
+    $filename_tpl = pathinfo($template_filename, PATHINFO_FILENAME) . '_' . date('Ymd') . '.' . $tpl_ext;
     file_put_contents($token_path, json_encode([
         'userid'   => $USER->id,
         'file'     => $out_file,

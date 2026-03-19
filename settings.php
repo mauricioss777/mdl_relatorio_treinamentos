@@ -364,7 +364,7 @@ JSCODE;
         'Arquivos template XLSX. Cada célula com <code>{nome_coluna}</code> marca o início de uma coluna de dados.',
         'templates',
         0,
-        ['maxfiles' => -1, 'accepted_types' => ['.xlsx']]
+        ['maxfiles' => -1, 'accepted_types' => ['.xlsx', '.xlsm']]
     ));
 
     $ADMIN->add('localplugins', $settings);

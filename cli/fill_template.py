@@ -400,11 +400,11 @@ def strip_content_types(xml_bytes, skip_paths):
 
 # ── Formula cache cleanup ─────────────────────────────────────────────────────
 
-def clear_formula_cache(xml_bytes):
-    """Remove cached values (v) and type (t) from formula cells in a worksheet.
-    Forces Excel to recalculate all formulas on open, avoiding
-    'Registros Removidos: Informacoes sobre a celula' errors caused by
-    stale cached values inconsistent with actual formula results."""
+def reset_dynamic_formulas(xml_bytes):
+    """Reset dynamic array (spill) formulas so Excel recalculates them on open.
+    Removes: cm attribute (cell metadata for dynamic arrays), t="array" and ref
+    from <f> (spill range cache), cached <v> values, and cell t attribute.
+    This forces Excel to treat them as fresh formulas and recompute the spill."""
     register_all_ns(xml_bytes)
     root = ET.fromstring(xml_bytes)
     sheetData = root.find(f'{{{XNS}}}sheetData')
@@ -417,12 +417,22 @@ def clear_formula_cache(xml_bytes):
             f_e = c_e.find(f'{{{XNS}}}f')
             if f_e is None:
                 continue
+            # Remove dynamic array cell metadata
+            if 'cm' in c_e.attrib:
+                del c_e.attrib['cm']
+                changed = True
+            # Remove array formula spill range (t="array" ref="...")
+            if f_e.get('t') == 'array':
+                del f_e.attrib['t']
+                if 'ref' in f_e.attrib:
+                    del f_e.attrib['ref']
+                changed = True
             # Remove cached value
             v_e = c_e.find(f'{{{XNS}}}v')
             if v_e is not None:
                 c_e.remove(v_e)
                 changed = True
-            # Remove type (Excel determines from recalculated value)
+            # Remove cell type (Excel determines from recalculated value)
             if 't' in c_e.attrib:
                 del c_e.attrib['t']
                 changed = True
@@ -515,6 +525,8 @@ def fill_template(template_path, output_path, csv_path):
                 skip_items.add(name)
             if name == 'xl/calcChain.xml':
                 skip_items.add(name)
+            if name == 'xl/metadata.xml':
+                skip_items.add(name)
 
         # Escrever ZIP de saída
         with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf_out:
@@ -534,9 +546,9 @@ def fill_template(template_path, output_path, csv_path):
                     item_bytes = fill_sheet_xml(item_bytes, markers, marker_row, data_rows)
 
                 elif item in all_sheets and item not in sheet_markers:
-                    # Sheet sem markers: limpar cache de formulas para evitar
-                    # inconsistencia com dados novos em outras planilhas
-                    item_bytes = clear_formula_cache(item_bytes)
+                    # Sheet sem markers: resetar fórmulas dinâmicas (FILTER, etc.)
+                    # para que o Excel recalcule o spill ao abrir
+                    item_bytes = reset_dynamic_formulas(item_bytes)
 
                 elif re.match(r'^xl/tables/table\d+\.xml$', item):
                     # TODAS as tabelas: limpar atributos de queryTable
