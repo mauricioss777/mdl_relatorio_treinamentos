@@ -403,6 +403,40 @@ def strip_content_types(xml_bytes, skip_paths):
     except Exception:
         return xml_bytes
 
+
+# ── Formula cache cleanup ─────────────────────────────────────────────────────
+
+def clear_formula_cache(xml_bytes):
+    """Remove cached values (v) and type (t) from formula cells in a worksheet.
+    Forces Excel to recalculate all formulas on open, avoiding
+    'Registros Removidos: Informacoes sobre a celula' errors caused by
+    stale cached values inconsistent with actual formula results."""
+    register_all_ns(xml_bytes)
+    root = ET.fromstring(xml_bytes)
+    sheetData = root.find(f'{{{XNS}}}sheetData')
+    if sheetData is None:
+        return xml_bytes
+
+    changed = False
+    for row_e in sheetData.findall(f'{{{XNS}}}row'):
+        for c_e in row_e.findall(f'{{{XNS}}}c'):
+            f_e = c_e.find(f'{{{XNS}}}f')
+            if f_e is None:
+                continue
+            # Remove cached value
+            v_e = c_e.find(f'{{{XNS}}}v')
+            if v_e is not None:
+                c_e.remove(v_e)
+                changed = True
+            # Remove type (Excel determines from recalculated value)
+            if 't' in c_e.attrib:
+                del c_e.attrib['t']
+                changed = True
+
+    if not changed:
+        return xml_bytes
+    return serialize_xml(root, xml_bytes)
+
 # ── Main pipeline ─────────────────────────────────────────────────────────────
 
 def fill_template(template_path, output_path, csv_path):
@@ -429,6 +463,7 @@ def fill_template(template_path, output_path, csv_path):
             n for n in zf_in.namelist()
             if re.match(r'^xl/worksheets/sheet\d+\.xml$', n)
         )
+        all_sheets = set(sheet_paths)
 
         # Encontrar marcadores em cada planilha
         sheet_markers = {}
@@ -503,6 +538,11 @@ def fill_template(template_path, output_path, csv_path):
                     marker_row = sheet_marker_rows[item]
                     print(f'  Planilha {item}: {len(markers)} colunas, {n_data} linhas (marker row={marker_row})')
                     item_bytes = fill_sheet_xml(item_bytes, markers, marker_row, data_rows)
+
+                elif item in all_sheets and item not in sheet_markers:
+                    # Sheet sem markers: limpar cache de formulas para evitar
+                    # inconsistencia com dados novos em outras planilhas
+                    item_bytes = clear_formula_cache(item_bytes)
 
                 elif re.match(r'^xl/tables/table\d+\.xml$', item):
                     # TODAS as tabelas: limpar atributos de queryTable
