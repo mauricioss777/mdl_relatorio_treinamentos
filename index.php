@@ -534,7 +534,7 @@ function initRT(\$) {
     var visibleCols = savedCols || defaultVisible.slice();
 
     var columnsDef = columnKeys.map(function(key) {
-        return { data: key, orderable: true, searchable: false, defaultContent: '' };
+        return { data: key, name: key, orderable: true, searchable: false, defaultContent: '' };
     });
 
     var initialColOrder = savedOrder || computeColOrder(visibleCols, columnKeys);
@@ -563,6 +563,13 @@ function initRT(\$) {
             data: function(d) {
                 d.sesskey = M.cfg.sesskey;
                 d.filters = JSON.stringify(activeFilters);
+                // ColReorder: traduz índice de display para índice de dados
+                if (d.order && d.order.length > 0) {
+                    try {
+                        var crOrder = table.colReorder.order();
+                        d.order.forEach(function(o) { o.column = crOrder[o.column]; });
+                    } catch(e) {}
+                }
                 return d;
             },
             error: function(xhr, err) {
@@ -579,12 +586,13 @@ function initRT(\$) {
 
     // ── Visibilidade de colunas ───────────────────────────────────────────────
 
-    function applyColVisibility(keys) {
-        var last = columnKeys.length - 1;
-        columnKeys.forEach(function(key, idx) {
-            // false = não recalcular/redesenhar a cada coluna; true só no último
-            table.column(idx).visible(keys.indexOf(key) !== -1, idx === last);
+    function applyColVisibility(keys, skipDraw) {
+        columnKeys.forEach(function(key) {
+            table.column(key + ':name').visible(keys.indexOf(key) !== -1, false);
         });
+        if (!skipDraw) {
+            table.columns.adjust().draw(false);
+        }
         document.querySelectorAll('.rt-col-toggle-cb').forEach(function(cb) {
             cb.checked = keys.indexOf(cb.dataset.colKey) !== -1;
         });
@@ -595,14 +603,10 @@ function initRT(\$) {
         if (order !== undefined) {
             try { localStorage.setItem(LS_ORDER_KEY, JSON.stringify(order)); } catch(e) {}
         }
-        rtShowOverlay('Atualizando colunas...');
-        setTimeout(function() {
-            applyColVisibility(keys);
-            if (order !== undefined) { try { table.colReorder.order(order); } catch(e) {} }
-            rtHideOverlay();
-        }, 0);
+        applyColVisibility(keys);
+        if (order !== undefined) { try { table.colReorder.order(order); } catch(e) {} }
     }
-    applyColVisibility(visibleCols);
+    applyColVisibility(visibleCols, true);
     table.on('colreorder.dt', function() {
         try { localStorage.setItem(LS_ORDER_KEY, JSON.stringify(table.colReorder.order())); } catch(e) {}
     });
