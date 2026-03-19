@@ -197,7 +197,7 @@ $tpl_files_raw = $fs_store->get_area_files(
 );
 $tpl_files = array_values(array_filter($tpl_files_raw, function($f) {
     return !$f->is_directory()
-        && strtolower(pathinfo($f->get_filename(), PATHINFO_EXTENSION)) === 'xlsx';
+        && in_array(strtolower(pathinfo($f->get_filename(), PATHINFO_EXTENSION)), ['xlsx', 'xlsm']);
 }));
 
 echo $OUTPUT->header();
