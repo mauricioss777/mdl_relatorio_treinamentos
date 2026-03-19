@@ -2,10 +2,11 @@
 """
 fill_template.py — Preenche template XLSX preservando slicers/filtros/formatações.
 Manipula ZIP/XML diretamente sem usar openpyxl para salvar, preservando todos os
-recursos Excel (segmentações, AutoFilter, tabelas, conexões, queryTables, etc.).
+recursos Excel (segmentações, AutoFilter, tabelas, imagens, gráficos, etc.).
 
-Princípio: SÓ modificar o que é absolutamente necessário para inserir dados.
-Não remover nenhum arquivo, atributo ou relationship do ZIP original.
+Limpeza de queryTable: remove arquivos e atributos de conexão externa (queryTables,
+connections.xml, tableType="queryTable", queryTableFieldId) que causam "Registros
+Removidos" quando a conexão está marcada como deleted.
 
 Sintaxe no template: célula com valor exato {nome_coluna}
 O script localiza a linha marcadora, substitui pelos dados, descarta linhas pré-existentes
@@ -305,10 +306,40 @@ def fill_sheet_xml(xml_bytes, markers, marker_row, data_rows):
 
 # ── Table modification ────────────────────────────────────────────────────────
 
-def update_table_xml(xml_bytes, marker_row, n_data):
+def clean_table_querytable(xml_bytes):
+    """
+    Remove atributos de queryTable de QUALQUER tabela no ZIP:
+    - tableType="queryTable"
+    - queryTableFieldId de cada tableColumn
+    Preserva tudo mais (ref, autoFilter, colunas, nomes).
+    """
+    register_all_ns(xml_bytes)
+    root = ET.fromstring(xml_bytes)
+
+    changed = False
+
+    # Remover tableType="queryTable"
+    if root.get('tableType') == 'queryTable':
+        del root.attrib['tableType']
+        changed = True
+
+    # Remover queryTableFieldId de cada tableColumn
+    cols_elem = root.find(f'{{{XNS}}}tableColumns')
+    if cols_elem is not None:
+        for col in cols_elem.findall(f'{{{XNS}}}tableColumn'):
+            if 'queryTableFieldId' in col.attrib:
+                del col.attrib['queryTableFieldId']
+                changed = True
+
+    if not changed:
+        return xml_bytes
+
+    return serialize_xml(root, xml_bytes)
+
+def update_table_ref(xml_bytes, new_end_row):
     """
     Atualiza APENAS o número de linhas no ref da tabela e no autoFilter.
-    Preserva todos os atributos (tableType, queryTableFieldId, etc.).
+    Preserva colunas originais.
     """
     register_all_ns(xml_bytes)
     root = ET.fromstring(xml_bytes)
@@ -322,7 +353,6 @@ def update_table_xml(xml_bytes, marker_row, n_data):
     if not end_col:
         return xml_bytes
 
-    new_end_row = marker_row + n_data - 1
     new_ref = f'{start_part}:{cell_addr(end_col, new_end_row)}'
     root.set('ref', new_ref)
 
@@ -332,6 +362,43 @@ def update_table_xml(xml_bytes, marker_row, n_data):
         af.set('ref', new_ref)
 
     return serialize_xml(root, xml_bytes)
+
+# ── Query table cleanup helpers ──────────────────────────────────────────────
+
+def strip_rel_type(xml_bytes, rel_type_to_remove):
+    """Remove entradas de um tipo específico do arquivo .rels."""
+    REL_NS = 'http://schemas.openxmlformats.org/package/2006/relationships'
+    try:
+        register_all_ns(xml_bytes)
+        root = ET.fromstring(xml_bytes)
+        removed = False
+        for rel in list(root.findall(f'{{{REL_NS}}}Relationship')):
+            if rel.get('Type') == rel_type_to_remove:
+                root.remove(rel)
+                removed = True
+        if not removed:
+            return xml_bytes
+        return serialize_xml(root, xml_bytes)
+    except Exception:
+        return xml_bytes
+
+def strip_content_types(xml_bytes, skip_paths):
+    """Remove entradas de Override para paths que foram excluídos do ZIP."""
+    CT_NS = 'http://schemas.openxmlformats.org/package/2006/content-types'
+    try:
+        register_all_ns(xml_bytes)
+        root = ET.fromstring(xml_bytes)
+        removed = False
+        for override in list(root.findall(f'{{{CT_NS}}}Override')):
+            part = override.get('PartName', '').lstrip('/')
+            if part in skip_paths:
+                root.remove(override)
+                removed = True
+        if not removed:
+            return xml_bytes
+        return serialize_xml(root, xml_bytes)
+    except Exception:
+        return xml_bytes
 
 # ── Main pipeline ─────────────────────────────────────────────────────────────
 
@@ -392,7 +459,7 @@ def fill_template(template_path, output_path, csv_path):
                 sheet_markers[sp] = markers
                 sheet_marker_rows[sp] = marker_row
 
-        # Tabelas afetadas
+        # Tabelas afetadas (na mesma sheet dos markers — para atualizar ref)
         affected_tables = {}  # table_path -> (marker_row, n_data)
         for sp in sheet_markers:
             for tp in get_sheet_table_paths(zf_in, sp):
@@ -400,23 +467,59 @@ def fill_template(template_path, output_path, csv_path):
 
         n_data = len(data_rows)
 
-        # Escrever ZIP de saída — copiar tudo, só modificar sheet e table XMLs
+        # Arquivos a remover do output:
+        # - queryTables e connections (conexão externa deleted/inválida)
+        # - calcChain.xml (Excel reconstrói automaticamente; manter causa erro
+        #   "Registros Removidos: Fórmula" porque referencia células que agora
+        #   têm dados em vez de fórmulas)
+        QUERY_TABLE_REL_TYPE = (
+            'http://schemas.openxmlformats.org/officeDocument/2006/relationships/queryTable'
+        )
+        skip_items = set()
+        for name in zf_in.namelist():
+            if re.match(r'^xl/queryTables/', name):
+                skip_items.add(name)
+            if name == 'xl/connections.xml':
+                skip_items.add(name)
+            if name == 'xl/calcChain.xml':
+                skip_items.add(name)
+
+        # Escrever ZIP de saída
         with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf_out:
             for item in zf_in.namelist():
+                # Pular arquivos de queryTable e connections
+                if item in skip_items:
+                    print(f'  Removendo {item} (query table / conexão externa)')
+                    continue
+
                 item_bytes = zf_in.read(item)
 
                 if item in sheet_markers:
+                    # Sheet com markers: preencher com dados
                     markers = sheet_markers[item]
                     marker_row = sheet_marker_rows[item]
                     print(f'  Planilha {item}: {len(markers)} colunas, {n_data} linhas (marker row={marker_row})')
                     item_bytes = fill_sheet_xml(item_bytes, markers, marker_row, data_rows)
 
-                elif item in affected_tables:
-                    mrow, nd = affected_tables[item]
-                    print(f'  Tabela {item}: ref → row {mrow} + {nd} linhas')
-                    item_bytes = update_table_xml(item_bytes, mrow, nd)
+                elif re.match(r'^xl/tables/table\d+\.xml$', item):
+                    # TODAS as tabelas: limpar atributos de queryTable
+                    item_bytes = clean_table_querytable(item_bytes)
+                    if item in affected_tables:
+                        mrow, nd = affected_tables[item]
+                        new_end_row = mrow + nd - 1
+                        print(f'  Tabela {item}: ref → row {mrow} + {nd} linhas')
+                        item_bytes = update_table_ref(item_bytes, new_end_row)
+                    else:
+                        print(f'  Tabela {item}: limpeza queryTable attrs')
 
-                # Tudo mais: copiar byte a byte sem modificação
+                elif re.match(r'^xl/tables/_rels/', item):
+                    # Remover relacionamento com queryTable dos rels de tabelas
+                    item_bytes = strip_rel_type(item_bytes, QUERY_TABLE_REL_TYPE)
+
+                elif item == '[Content_Types].xml':
+                    # Remover entradas de content type para arquivos removidos
+                    if skip_items:
+                        item_bytes = strip_content_types(item_bytes, skip_items)
 
                 zf_out.writestr(item, item_bytes)
 
