@@ -58,6 +58,8 @@ class atualizar_relatorio extends \core\task\scheduled_task {
             mtrace('Cache atualizado: ' . count($dados) . ' registros.');
 
         } elseif ($estrategia === 'view') {
+            // Garante que a view materializada existe (idempotente)
+            local_relatorio_treinamentos_setup_matview($DB);
             // Atualiza a view no PostgreSQL (sem carregar dados no PHP)
             mtrace('Atualizando view materializada...');
             local_relatorio_treinamentos_refresh_matview($DB);
